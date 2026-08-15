@@ -42,7 +42,7 @@ const dom = {
   clearFiltersBtn: document.getElementById('clearFiltersBtn'),
   refreshBtn: document.getElementById('refreshBtn'),
   tailscaleChip: document.getElementById('tailscaleChip'),
-  lanChip: document.getElementById('tailscaleChip'),
+  lanChip: document.getElementById('lanChip'),
   tailscaleLabel: document.getElementById('tailscaleLabel'),
   lanLabel: document.getElementById('lanLabel'),
   toastContainer: document.getElementById('toastContainer'),
@@ -453,8 +453,8 @@ async function fetchMessages() {
     const res = await fetch(`/api/messages?${params.toString()}`);
     const data = await res.json();
 
-    state.messages = data.messages || [];
-    state.total = data.total || 0;
+    state.messages = Array.isArray(data.items) ? data.items : Array.isArray(data.messages) ? data.messages : [];
+    state.total = data.total ?? state.messages.length;
 
     renderMessagesFeed();
     updateFilterSummary();
@@ -498,7 +498,7 @@ async function fetchSidebarData() {
 function renderSidebarAgents() {
   if (!dom.agentsList) return;
 
-  const totalCount = state.stats?.totalMessages || 0;
+  const totalCount = state.stats?.totalMessages || state.total || 0;
   if (dom.agentsCount) dom.agentsCount.textContent = state.agents.length;
   if (dom.totalMsgBadge) dom.totalMsgBadge.textContent = totalCount;
 
@@ -516,7 +516,7 @@ function renderSidebarAgents() {
       <button class="nav-item ${isActive ? 'active' : ''}" data-filter-agent="${escapeHtml(a.name)}">
         <span class="nav-icon">🤖</span>
         <span class="nav-text" title="${escapeHtml(a.name)}">${escapeHtml(a.name)}</span>
-        <span class="nav-badge">${a.messageCount}</span>
+        <span class="nav-badge">${a.messageCount || 0}</span>
       </button>
     `;
   });
@@ -526,8 +526,8 @@ function renderSidebarAgents() {
 
 function renderStatsBadges() {
   if (!state.stats) return;
-  if (dom.statTotal) dom.statTotal.textContent = state.stats.totalMessages || 0;
-  if (dom.statAgents) dom.statAgents.textContent = state.stats.totalAgents || 0;
+  if (dom.statTotal) dom.statTotal.textContent = state.stats.totalMessages || state.total || 0;
+  if (dom.statAgents) dom.statAgents.textContent = state.stats.totalAgents || (state.agents ? state.agents.length : 0);
   if (dom.statAnswered) dom.statAnswered.textContent = state.stats.byStatus?.answered || 0;
 
   const levels = state.stats.byLevel || {};
@@ -546,18 +546,22 @@ function renderNetworkChips(network) {
   if (!network) return;
   if (dom.tailscaleLabel && network.tailscaleUrl) {
     dom.tailscaleLabel.textContent = 'Tailscale';
-    dom.tailscaleChip.onclick = () => copyToClipboard(network.tailscaleUrl, 'Tailscale URL copied!');
+    if (dom.tailscaleChip) {
+      dom.tailscaleChip.onclick = () => copyToClipboard(network.tailscaleUrl, 'Tailscale URL copied!');
+    }
   }
   if (dom.lanLabel && network.localLanUrl) {
     dom.lanLabel.textContent = 'LAN';
-    dom.lanChip.onclick = () => copyToClipboard(network.localLanUrl, 'Local LAN URL copied!');
+    if (dom.lanChip) {
+      dom.lanChip.onclick = () => copyToClipboard(network.localLanUrl, 'Local LAN URL copied!');
+    }
   }
 }
 
 function renderMessagesFeed() {
   if (!dom.feedContainer) return;
 
-  if (state.messages.length === 0) {
+  if (!state.messages || state.messages.length === 0) {
     dom.feedContainer.innerHTML = `
       <div class="feed-empty">
         <span class="empty-icon">📭</span>
@@ -571,7 +575,9 @@ function renderMessagesFeed() {
 
   let html = '';
   state.messages.forEach((msg) => {
-    html += buildMessageCardHtml(msg);
+    if (msg) {
+      html += buildMessageCardHtml(msg);
+    }
   });
 
   dom.feedContainer.innerHTML = html;
@@ -580,9 +586,11 @@ function renderMessagesFeed() {
 }
 
 function buildMessageCardHtml(msg) {
+  const msgId = msg.id || ('msg_' + Math.random().toString(36).slice(2, 10));
   const levelClass = `level-${msg.level || 'info'}`;
   const relativeTime = formatRelativeTime(msg.createdAt);
   const fullTime = formatFullTime(msg.createdAt);
+  const idTag = msg.id ? `#${msg.id.slice(-8)}` : '';
 
   let typeIcon = '💬';
   let typeLabel = 'Notification';
@@ -600,7 +608,7 @@ function buildMessageCardHtml(msg) {
     if (msg.status === 'delivered') {
       const optionsHtml = (msg.options && msg.options.length > 0)
         ? msg.options.map((opt) => `
-            <button class="btn-ask-option" data-msg-id="${msg.id}" data-response="${escapeHtml(opt)}">
+            <button class="btn-ask-option" data-msg-id="${msgId}" data-response="${escapeHtml(opt)}">
               ${escapeHtml(opt)}
             </button>
           `).join('')
@@ -615,8 +623,8 @@ function buildMessageCardHtml(msg) {
             ${optionsHtml}
           </div>
           <div class="custom-reply-box">
-            <input type="text" class="input-custom-reply" placeholder="Or type a custom reply..." id="reply-input-${msg.id}" />
-            <button class="btn-send-reply" data-msg-id="${msg.id}">Reply</button>
+            <input type="text" class="input-custom-reply" placeholder="Or type a custom reply..." id="reply-input-${msgId}" />
+            <button class="btn-send-reply" data-msg-id="${msgId}">Reply</button>
           </div>
         </div>
       `;
@@ -649,7 +657,7 @@ function buildMessageCardHtml(msg) {
           <span class="attachment-name">${escapeHtml(filename)}</span>
           <span class="attachment-size">${sizeStr}</span>
         </div>
-        <a href="/api/files/${msg.id}" class="btn-download" target="_blank" download="${escapeHtml(filename)}">
+        <a href="/api/files/${msgId}" class="btn-download" target="_blank" download="${escapeHtml(filename)}">
           ⬇ Download
         </a>
       </div>
@@ -657,7 +665,7 @@ function buildMessageCardHtml(msg) {
   }
 
   return `
-    <article class="msg-card" id="msg-${msg.id}" data-id="${msg.id}">
+    <article class="msg-card" id="msg-${msgId}" data-id="${msgId}">
       <header class="msg-header">
         <div class="msg-header-left">
           <span class="agent-badge">
@@ -673,21 +681,21 @@ function buildMessageCardHtml(msg) {
       </header>
 
       <div class="msg-body">
-        <div class="msg-content">${escapeHtml(msg.content)}</div>
+        <div class="msg-content">${escapeHtml(msg.content || '')}</div>
         ${askHtml}
         ${fileHtml}
       </div>
 
       <footer class="msg-footer">
         <div class="actions-left">
-          <button class="btn-action btn-copy-text" data-text="${escapeHtml(msg.content)}" title="Copy message text">
+          <button class="btn-action btn-copy-text" data-text="${escapeHtml(msg.content || '')}" title="Copy message text">
             📋 Copy Text
           </button>
-          <button class="btn-action btn-copy-link" data-id="${msg.id}" title="Copy direct link">
+          <button class="btn-action btn-copy-link" data-id="${msgId}" title="Copy direct link">
             🔗 Copy Link
           </button>
         </div>
-        <span class="msg-id-tag">#${msg.id.slice(-8)}</span>
+        <span class="msg-id-tag">${idTag}</span>
       </footer>
     </article>
   `;
