@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>agent-notify — AI Message & Notification Feed</title>
+  <link rel="stylesheet" href="/app.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+</head>
+<body class="theme-dark">
+  <div class="app-container">
+    <!-- Header -->
+    <header class="app-header">
+      <div class="header-left">
+        <div class="brand">
+          <span class="brand-icon">📡</span>
+          <span class="brand-name">agent-notify</span>
+          <span class="version-badge">v1.0</span>
+        </div>
+        <div class="live-status" id="liveStatus" title="Real-time SSE Connection Active">
+          <span class="status-dot"></span>
+          <span class="status-label">Live</span>
+        </div>
+      </div>
+
+      <div class="header-center">
+        <div class="search-bar">
+          <span class="search-icon">🔍</span>
+          <input type="text" id="searchInput" placeholder="Search messages, agents, answers..." autocomplete="off" />
+          <button id="clearSearch" class="btn-clear" style="display: none;">✕</button>
+        </div>
+      </div>
+
+      <div class="header-right">
+        <!-- Network links chips -->
+        <div class="network-chips" id="networkChips">
+          <button class="chip" id="tailscaleChip" title="Click to copy Tailscale link">
+            <span class="chip-icon">🌐</span>
+            <span class="chip-label" id="tailscaleLabel">Tailscale</span>
+          </button>
+          <button class="chip" id="lanChip" title="Click to copy Local LAN link">
+            <span class="chip-icon">🏠</span>
+            <span class="chip-label" id="lanLabel">LAN</span>
+          </button>
+        </div>
+
+        <button id="themeToggle" class="btn-icon" title="Toggle Theme">
+          <span id="themeIcon">🌙</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- Main Layout -->
+    <div class="app-layout">
+      <!-- Sidebar -->
+      <aside class="sidebar" id="sidebar">
+        <!-- Agents Group -->
+        <div class="sidebar-section">
+          <div class="section-title">
+            <span>Agents</span>
+            <span class="section-badge" id="agentsCount">0</span>
+          </div>
+          <div class="nav-list" id="agentsList">
+            <button class="nav-item active" data-filter-agent="">
+              <span class="nav-icon">🤖</span>
+              <span class="nav-text">All Agents</span>
+              <span class="nav-badge" id="totalMsgBadge">0</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Levels Filter -->
+        <div class="sidebar-section">
+          <div class="section-title">Severity Level</div>
+          <div class="nav-list" id="levelsList">
+            <button class="nav-item active" data-filter-level="">
+              <span class="nav-icon">📋</span>
+              <span class="nav-text">All Levels</span>
+            </button>
+            <button class="nav-item" data-filter-level="info">
+              <span class="nav-icon">ℹ️</span>
+              <span class="nav-text">Info</span>
+              <span class="nav-badge" id="badge-info">0</span>
+            </button>
+            <button class="nav-item" data-filter-level="success">
+              <span class="nav-icon">✅</span>
+              <span class="nav-text">Success</span>
+              <span class="nav-badge" id="badge-success">0</span>
+            </button>
+            <button class="nav-item" data-filter-level="warn">
+              <span class="nav-icon">⚠️</span>
+              <span class="nav-text">Warning</span>
+              <span class="nav-badge" id="badge-warn">0</span>
+            </button>
+            <button class="nav-item" data-filter-level="error">
+              <span class="nav-icon">🚨</span>
+              <span class="nav-text">Error</span>
+              <span class="nav-badge" id="badge-error">0</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Types Filter -->
+        <div class="sidebar-section">
+          <div class="section-title">Message Type</div>
+          <div class="nav-list" id="typesList">
+            <button class="nav-item active" data-filter-type="">
+              <span class="nav-icon">📑</span>
+              <span class="nav-text">All Types</span>
+            </button>
+            <button class="nav-item" data-filter-type="notification">
+              <span class="nav-icon">💬</span>
+              <span class="nav-text">Notifications</span>
+            </button>
+            <button class="nav-item" data-filter-type="file">
+              <span class="nav-icon">📁</span>
+              <span class="nav-text">Files & Media</span>
+            </button>
+            <button class="nav-item" data-filter-type="ask">
+              <span class="nav-icon">❓</span>
+              <span class="nav-text">Human Approvals</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Footer Stats -->
+        <div class="sidebar-footer">
+          <div class="stats-grid">
+            <div class="stat-box">
+              <span class="stat-value" id="statTotal">0</span>
+              <span class="stat-label">Total</span>
+            </div>
+            <div class="stat-box">
+              <span class="stat-value" id="statAgents">0</span>
+              <span class="stat-label">Agents</span>
+            </div>
+            <div class="stat-box">
+              <span class="stat-value" id="statAnswered">0</span>
+              <span class="stat-label">Answered</span>
+            </div>
+          </div>
+        </div>
+      </aside>
+
+      <!-- Main Feed -->
+      <main class="main-content">
+        <!-- Feed Controls Bar -->
+        <div class="feed-header">
+          <div class="feed-filters-summary" id="filtersSummary">
+            <span>Showing <strong id="activeFilterLabel">all messages</strong></span>
+          </div>
+          <div class="feed-actions">
+            <button id="refreshBtn" class="btn-sm" title="Refresh messages">
+              🔄 Refresh
+            </button>
+            <button id="clearFiltersBtn" class="btn-sm btn-ghost" style="display: none;">
+              Reset Filters
+            </button>
+          </div>
+        </div>
+
+        <!-- Message Feed List -->
+        <div class="feed-container" id="feedContainer">
+          <div class="feed-loading" id="feedLoading">
+            <div class="spinner"></div>
+            <span>Loading message stream...</span>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <!-- Toast Notification Container -->
+  <div class="toast-container" id="toastContainer"></div>
+
+  <script src="/app.js"></script>
+</body>
+</html>
