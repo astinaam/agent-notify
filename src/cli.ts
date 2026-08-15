@@ -392,15 +392,21 @@ configCommand
   .option('--links <boolean>', 'Include links in messages (true/false)')
   .option('--tailscale-host <host>', 'Custom Tailscale host override')
   .option('--lan-host <host>', 'Custom LAN host override')
-  .action((options) => {
+  .action((options, cmd) => {
+    const parentOpts = program.opts();
+    const cmdOpts = cmd ? cmd.opts() : options;
+    const token = cmdOpts.token || parentOpts.token;
+    const chatId = cmdOpts.chatId || parentOpts.chatId;
+    const topicId = cmdOpts.topicId || parentOpts.topicId;
+
     const updates: Partial<any> = {};
-    if (options.token) updates.botToken = options.token;
-    if (options.chatId) updates.chatId = options.chatId;
-    if (options.topicId) updates.topicId = Number.parseInt(options.topicId, 10);
-    if (options.port) updates.serverPort = Number.parseInt(options.port, 10);
-    if (options.links !== undefined) updates.includeLinks = options.links === 'true';
-    if (options.tailscaleHost) updates.tailscaleHost = options.tailscaleHost;
-    if (options.lanHost) updates.lanHost = options.lanHost;
+    if (token) updates.botToken = token;
+    if (chatId) updates.chatId = chatId;
+    if (topicId) updates.topicId = Number.parseInt(topicId, 10);
+    if (cmdOpts.port) updates.serverPort = Number.parseInt(cmdOpts.port, 10);
+    if (cmdOpts.links !== undefined) updates.includeLinks = cmdOpts.links === 'true';
+    if (cmdOpts.tailscaleHost) updates.tailscaleHost = cmdOpts.tailscaleHost;
+    if (cmdOpts.lanHost) updates.lanHost = cmdOpts.lanHost;
 
     saveConfig(updates);
     console.log(pc.green(`✓ Configuration updated in ${getConfigPath()}`));
