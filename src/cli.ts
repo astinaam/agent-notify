@@ -7,6 +7,7 @@ import { runSetup } from './setup.js';
 import { runMcpServer } from './mcp.js';
 import { startServer, ensureServerRunning, stopDaemon, isServerRunning, getPidFile, getLogFile } from './server.js';
 import { getNetworkAddresses, getMessageLinks } from './network.js';
+import { getSystemMetrics, checkAndEvaluateAlerts } from './monitor.js';
 import type { NotificationLevel, ParseMode } from './types.js';
 
 async function readStdin(): Promise<string> {
@@ -225,6 +226,99 @@ program
     }
   });
 
+// Command: monitor (System resource alert monitor)
+const monitorCommand = program
+  .command('monitor')
+  .description('Optional lightweight system resource monitor & threshold alerts');
+
+monitorCommand
+  .command('status')
+  .description('View current system resource utilization and alert thresholds')
+  .action(() => {
+    const config = resolveConfig();
+    const metrics = getSystemMetrics();
+    const mon = config.monitor || { enabled: false };
+
+    console.log();
+    console.log(pc.bgCyan(pc.black(' System Resource Status ')));
+    console.log();
+    console.log(pc.bold(`  Host:        ${metrics.hostname} (Uptime: ${Math.floor(metrics.uptimeSec / 3600)}h ${Math.floor((metrics.uptimeSec % 3600) / 60)}m)`));
+    console.log(`  Monitoring:  ${mon.enabled ? pc.green('ENABLED (Active in daemon)') : pc.yellow('DISABLED (default off)')}`);
+    console.log();
+    console.log(pc.bold('  Current Utilization:'));
+    console.log(`  • CPU:       ${metrics.cpu.usagePct}% (Load: ${metrics.cpu.loadAvg.join(', ')}) [${metrics.cpu.cores} cores]`);
+    console.log(`  • RAM:       ${metrics.ram.usedPct}% (${metrics.ram.usedMb} MB used / ${metrics.ram.freeMb} MB free / ${metrics.ram.totalMb} MB total)`);
+    console.log(`  • Disk (/):  ${metrics.disk.usedPct}% (${metrics.disk.usedGb} GB used / ${metrics.disk.freeGb} GB free / ${metrics.disk.totalGb} GB total)`);
+    if (metrics.tempC !== undefined) {
+      console.log(`  • Temp:      ${metrics.tempC}°C`);
+    }
+    console.log();
+    console.log(pc.bold('  Configured Alert Thresholds:'));
+    console.log(`  • RAM Alert:       >= ${mon.ramThresholdPct ?? 90}%`);
+    console.log(`  • Disk Alert:      >= ${mon.diskThresholdPct ?? 90}%`);
+    console.log(`  • CPU Alert:       >= ${mon.cpuThresholdPct ?? 90}%`);
+    console.log(`  • Temp Alert:      >= ${mon.tempThresholdC ?? 80}°C`);
+    console.log(`  • Check Interval:  Every ${mon.checkIntervalSec ?? 60}s`);
+    console.log(`  • Alert Cooldown:  ${(mon.cooldownSec ?? 1800) / 60} minutes between repeat alerts`);
+    console.log(`  • Recovery Alert:  ${mon.alertOnRecovery !== false ? 'Yes' : 'No'}`);
+    console.log();
+  });
+
+monitorCommand
+  .command('enable')
+  .description('Enable automated background resource monitoring')
+  .action(() => {
+    saveConfig({ monitor: { enabled: true } });
+    console.log(pc.green('✓ System resource monitoring ENABLED.'));
+    console.log(pc.dim('  The background daemon will now alert you on Telegram if thresholds are exceeded.'));
+  });
+
+monitorCommand
+  .command('disable')
+  .description('Disable automated background resource monitoring')
+  .action(() => {
+    saveConfig({ monitor: { enabled: false } });
+    console.log(pc.yellow('✓ System resource monitoring DISABLED.'));
+  });
+
+monitorCommand
+  .command('set')
+  .description('Configure monitor thresholds and intervals')
+  .option('--cpu <pct>', 'CPU usage alert threshold % (e.g. 90)')
+  .option('--ram <pct>', 'RAM usage alert threshold % (e.g. 90)')
+  .option('--disk <pct>', 'Disk usage alert threshold % (e.g. 90)')
+  .option('--temp <celsius>', 'CPU temperature threshold in °C (e.g. 80)')
+  .option('--interval <seconds>', 'Check interval in seconds (e.g. 60)')
+  .option('--cooldown <seconds>', 'Cooldown between repeat alerts in seconds (e.g. 1800)')
+  .option('--recovery <boolean>', 'Send recovery notification when resource normalizes (true/false)')
+  .action((options) => {
+    const updates: Partial<any> = {};
+    if (options.cpu) updates.cpuThresholdPct = Number.parseInt(options.cpu, 10);
+    if (options.ram) updates.ramThresholdPct = Number.parseInt(options.ram, 10);
+    if (options.disk) updates.diskThresholdPct = Number.parseInt(options.disk, 10);
+    if (options.temp) updates.tempThresholdC = Number.parseFloat(options.temp);
+    if (options.interval) updates.checkIntervalSec = Number.parseInt(options.interval, 10);
+    if (options.cooldown) updates.cooldownSec = Number.parseInt(options.cooldown, 10);
+    if (options.recovery !== undefined) updates.alertOnRecovery = options.recovery === 'true';
+
+    saveConfig({ monitor: updates as any });
+    console.log(pc.green('✓ Monitoring configuration updated.'));
+  });
+
+monitorCommand
+  .command('check')
+  .description('Run an immediate one-off resource check and alert evaluation')
+  .action(async () => {
+    console.log(pc.cyan('Evaluating system resource metrics...'));
+    const { triggeredAlerts, recoveredAlerts } = await checkAndEvaluateAlerts();
+    if (triggeredAlerts.length > 0) {
+      console.log(pc.red(`🚨 ${triggeredAlerts.length} alert(s) triggered & sent to Telegram.`));
+      triggeredAlerts.forEach((a) => console.log(`  ${a.replace(/<[^>]*>/g, '')}`));
+    } else {
+      console.log(pc.green('✓ All system metrics are within normal thresholds.'));
+    }
+  });
+
 // Command: serve / web
 program
   .command('serve')
@@ -374,6 +468,7 @@ configCommand
     }
     console.log(`Web Port:       ${pc.bold(String(config.serverPort || 4173))}`);
     console.log(`Include Links:  ${pc.bold(String(config.includeLinks !== false))}`);
+    console.log(`Resource Alert: ${config.monitor?.enabled ? pc.green('ENABLED') : pc.yellow('DISABLED (default)')}`);
     if (config.tailscaleHost) {
       console.log(`Tailscale Host: ${pc.bold(config.tailscaleHost)}`);
     }

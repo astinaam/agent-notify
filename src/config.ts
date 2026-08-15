@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import dotenv from 'dotenv';
-import type { TelegramConfig } from './types.js';
+import type { TelegramConfig, MonitorConfig } from './types.js';
 
 dotenv.config();
 
@@ -37,7 +37,13 @@ export function saveConfig(config: Partial<TelegramConfig>): void {
     fs.mkdirSync(dir, { recursive: true });
   }
   const existing = loadSavedConfig();
-  const merged = { ...existing, ...config };
+  const merged = {
+    ...existing,
+    ...config,
+    monitor: config.monitor
+      ? { ...(existing.monitor || {}), ...config.monitor }
+      : existing.monitor,
+  };
   fs.writeFileSync(getConfigPath(), JSON.stringify(merged, null, 2), { mode: 0o600 });
 }
 
@@ -89,6 +95,17 @@ export function resolveConfig(overrides?: Partial<TelegramConfig>): TelegramConf
     process.env.AGENT_NOTIFY_LAN_HOST ||
     saved.lanHost;
 
+  const monitor: MonitorConfig = {
+    enabled: overrides?.monitor?.enabled ?? saved.monitor?.enabled ?? false,
+    cpuThresholdPct: overrides?.monitor?.cpuThresholdPct ?? saved.monitor?.cpuThresholdPct ?? 90,
+    ramThresholdPct: overrides?.monitor?.ramThresholdPct ?? saved.monitor?.ramThresholdPct ?? 90,
+    diskThresholdPct: overrides?.monitor?.diskThresholdPct ?? saved.monitor?.diskThresholdPct ?? 90,
+    tempThresholdC: overrides?.monitor?.tempThresholdC ?? saved.monitor?.tempThresholdC ?? 80,
+    checkIntervalSec: overrides?.monitor?.checkIntervalSec ?? saved.monitor?.checkIntervalSec ?? 60,
+    cooldownSec: overrides?.monitor?.cooldownSec ?? saved.monitor?.cooldownSec ?? 1800,
+    alertOnRecovery: overrides?.monitor?.alertOnRecovery ?? saved.monitor?.alertOnRecovery ?? true,
+  };
+
   return {
     botToken,
     chatId: String(chatId),
@@ -97,6 +114,7 @@ export function resolveConfig(overrides?: Partial<TelegramConfig>): TelegramConf
     includeLinks,
     tailscaleHost,
     lanHost,
+    monitor,
   };
 }
 

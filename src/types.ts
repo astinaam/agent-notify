@@ -4,6 +4,42 @@ export type ParseMode = 'MarkdownV2' | 'HTML' | 'Markdown';
 
 export type MessageType = 'notification' | 'file' | 'ask';
 
+export interface MonitorConfig {
+  enabled: boolean;
+  cpuThresholdPct?: number; // e.g. 90 (90%)
+  ramThresholdPct?: number; // e.g. 90 (90%)
+  diskThresholdPct?: number; // e.g. 90 (90%)
+  tempThresholdC?: number; // e.g. 80 (80°C)
+  checkIntervalSec?: number; // default 60
+  cooldownSec?: number; // default 1800 (30 mins between duplicate alerts)
+  alertOnRecovery?: boolean; // default true
+}
+
+export interface SystemMetrics {
+  hostname: string;
+  uptimeSec: number;
+  cpu: {
+    usagePct: number;
+    loadAvg: number[];
+    cores: number;
+  };
+  ram: {
+    usedPct: number;
+    usedMb: number;
+    freeMb: number;
+    totalMb: number;
+  };
+  disk: {
+    usedPct: number;
+    usedGb: number;
+    freeGb: number;
+    totalGb: number;
+    path: string;
+  };
+  tempC?: number;
+  timestamp: string;
+}
+
 export interface TelegramConfig {
   botToken: string;
   chatId: string;
@@ -12,11 +48,12 @@ export interface TelegramConfig {
   includeLinks?: boolean; // include Tailscale & LAN links in messages (default true)
   tailscaleHost?: string; // custom tailscale IP or MagicDNS override
   lanHost?: string; // custom LAN IP override
+  monitor?: MonitorConfig; // optional system resource monitor
 }
 
 export interface StoredMessage {
   id: string;
-  agent: string; // e.g. "Antigravity", "Claude", "DeployBot"
+  agent: string; // e.g. "Antigravity", "Claude", "SystemMonitor"
   type: MessageType;
   level: NotificationLevel;
   content: string;
@@ -63,8 +100,8 @@ export interface SendFileOptions {
 export interface AskUserOptions {
   question: string;
   agent?: string;
-  options?: string[]; // e.g. ["Approve", "Reject"] or free-form if empty
-  timeoutSeconds?: number; // default 300 (5 mins)
+  options?: string[];
+  timeoutSeconds?: number;
   level?: NotificationLevel;
   includeLinks?: boolean;
 }

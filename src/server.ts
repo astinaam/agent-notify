@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { messageStore } from './store.js';
 import { getNetworkAddresses } from './network.js';
 import { resolveConfig, getConfigDir } from './config.js';
+import { getSystemMetrics, startMonitorService } from './monitor.js';
 import type { NetworkAddresses } from './types.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -112,7 +113,7 @@ export function createServer(): http.Server {
       return;
     }
 
-    // API: POST /api/messages/:id/respond (2-Way Web UI Human Response)
+    // API: POST /api/messages/:id/respond
     if (pathname.startsWith('/api/messages/') && pathname.endsWith('/respond') && req.method === 'POST') {
       const id = pathname.replace('/api/messages/', '').replace('/respond', '');
       try {
@@ -164,6 +165,18 @@ export function createServer(): http.Server {
       const addresses = getNetworkAddresses(config.serverPort, config);
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(addresses));
+      return;
+    }
+
+    // API: GET /api/system (Real-time system health metrics)
+    if (pathname === '/api/system' && req.method === 'GET') {
+      const config = resolveConfig();
+      const metrics = getSystemMetrics();
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        metrics,
+        monitor: config.monitor || { enabled: false },
+      }));
       return;
     }
 
@@ -259,7 +272,6 @@ export async function ensureServerRunning(portOverride?: number): Promise<void> 
   const running = await isServerRunning(port);
   if (running) return;
 
-  // Auto-launch detached background daemon
   const dir = getConfigDir();
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
@@ -282,7 +294,6 @@ export async function ensureServerRunning(portOverride?: number): Promise<void> 
     fs.writeFileSync(getPidFile(), String(child.pid), 'utf8');
   }
 
-  // Wait briefly for startup
   for (let i = 0; i < 5; i++) {
     await new Promise((r) => setTimeout(r, 150));
     if (await isServerRunning(port)) break;
@@ -300,7 +311,6 @@ export function stopDaemon(): boolean {
         return true;
       }
     } catch {
-      // Process already gone
       try { fs.unlinkSync(pidFile); } catch {}
     }
   }
@@ -316,6 +326,9 @@ export async function startServer(
   const host = hostOverride || '0.0.0.0';
 
   const server = createServer();
+
+  // Start background resource monitor service if enabled
+  startMonitorService();
 
   return new Promise((resolve, reject) => {
     server.listen(port, host, () => {

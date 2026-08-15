@@ -61,6 +61,19 @@ agent-notify ask "Which database environment should I seed?" --agent "Antigravit
 agent-notify ask "Run database migration?" --agent "Antigravity" --options "Yes,No" --json
 ```
 
+### 5. Optional System Resource Alert Monitor (Default: OFF)
+```bash
+# Check system metrics (CPU, RAM, Disk, Temp)
+agent-notify monitor status
+
+# Enable / disable background automated resource alerts
+agent-notify monitor enable
+agent-notify monitor disable
+
+# Configure thresholds
+agent-notify monitor set --ram 90 --disk 85 --cpu 90 --temp 80 --cooldown 1800
+```
+
 ---
 
 ## 🔌 MCP Tools (Model Context Protocol)

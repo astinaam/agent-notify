@@ -114,7 +114,25 @@ agent-notify ask "Which branch should I merge into main?" --timeout 120
 agent-notify ask "Run migration?" --options "Yes,No" --json
 ```
 
-### 5. View Network & Message Links
+### 5. Optional System Resource Alert Monitor (Default: OFF)
+Ultra-lightweight (< 0.1ms execution, near-zero CPU overhead) system health alerts:
+
+```bash
+# Check current system utilization and threshold status
+agent-notify monitor status
+
+# Enable / disable background automated resource alerts
+agent-notify monitor enable
+agent-notify monitor disable
+
+# Customize alert thresholds and cooldowns
+agent-notify monitor set --ram 90 --disk 85 --cpu 90 --temp 80 --cooldown 1800
+
+# Immediate one-off check
+agent-notify monitor check
+```
+
+### 6. View Network & Message Links
 ```bash
 agent-notify links            # View dashboard links (Tailscale, LAN, Localhost)
 agent-notify links <msg_id>   # View direct link for a specific message
