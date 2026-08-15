@@ -74,18 +74,27 @@ npm link --silent >/dev/null 2>&1 || true
 
 echo -e "${GREEN}✓ Binary linked to $BIN_DIR/agent-notify${NC}"
 
-# 5. Install Agent Skills (for Antigravity, Claude, and Agent CLI systems)
-install_skill() {
-  local target_dir="$1"
-  if [ -d "$target_dir" ] || [ -d "$(dirname "$target_dir")" ]; then
-    mkdir -p "$target_dir"
-    cp "$INSTALL_DIR/skills/SKILL.md" "$target_dir/SKILL.md"
-    echo -e "${GREEN}✓ Agent skill installed into $target_dir${NC}"
-  fi
-}
+# 5. Install Agent Skills (Always in ~/.agents, and in ~/.gemini & ~/.cursor if available)
+echo -e "${CYAN}→ Installing AI agent skills...${NC}"
 
-install_skill "$HOME/.agents/skills/agent-notify"
-install_skill "$HOME/.gemini/config/skills/agent-notify"
+# 1. Always install into global ~/.agents
+mkdir -p "$HOME/.agents/skills/agent-notify"
+cp "$INSTALL_DIR/skills/SKILL.md" "$HOME/.agents/skills/agent-notify/SKILL.md"
+echo -e "${GREEN}✓ Installed skill into ~/.agents/skills/agent-notify/SKILL.md${NC}"
+
+# 2. If .gemini exists, install into Gemini / Antigravity global skill directory
+if [ -d "$HOME/.gemini" ]; then
+  mkdir -p "$HOME/.gemini/config/skills/agent-notify"
+  cp "$INSTALL_DIR/skills/SKILL.md" "$HOME/.gemini/config/skills/agent-notify/SKILL.md"
+  echo -e "${GREEN}✓ Installed skill into ~/.gemini/config/skills/agent-notify/SKILL.md${NC}"
+fi
+
+# 3. If .cursor exists, install into Cursor global skill directory
+if [ -d "$HOME/.cursor" ]; then
+  mkdir -p "$HOME/.cursor/skills/agent-notify"
+  cp "$INSTALL_DIR/skills/SKILL.md" "$HOME/.cursor/skills/agent-notify/SKILL.md"
+  echo -e "${GREEN}✓ Installed skill into ~/.cursor/skills/agent-notify/SKILL.md${NC}"
+fi
 
 # 6. Check PATH
 case ":$PATH:" in

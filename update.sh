@@ -58,13 +58,20 @@ ln -sf "$INSTALL_DIR/dist/cli.js" "$HOME/.local/bin/agent-notify"
 npm link --silent >/dev/null 2>&1 || true
 
 # 5. Update Skills
-if [ -d "$HOME/.agents/skills/agent-notify" ]; then
-  cp "$INSTALL_DIR/skills/SKILL.md" "$HOME/.agents/skills/agent-notify/SKILL.md"
-  echo -e "${GREEN}✓ Updated ~/.agents/skills/agent-notify/SKILL.md${NC}"
-fi
-if [ -d "$HOME/.gemini/config/skills/agent-notify" ]; then
+mkdir -p "$HOME/.agents/skills/agent-notify"
+cp "$INSTALL_DIR/skills/SKILL.md" "$HOME/.agents/skills/agent-notify/SKILL.md"
+echo -e "${GREEN}✓ Updated ~/.agents/skills/agent-notify/SKILL.md${NC}"
+
+if [ -d "$HOME/.gemini" ]; then
+  mkdir -p "$HOME/.gemini/config/skills/agent-notify"
   cp "$INSTALL_DIR/skills/SKILL.md" "$HOME/.gemini/config/skills/agent-notify/SKILL.md"
   echo -e "${GREEN}✓ Updated ~/.gemini/config/skills/agent-notify/SKILL.md${NC}"
+fi
+
+if [ -d "$HOME/.cursor" ]; then
+  mkdir -p "$HOME/.cursor/skills/agent-notify"
+  cp "$INSTALL_DIR/skills/SKILL.md" "$HOME/.cursor/skills/agent-notify/SKILL.md"
+  echo -e "${GREEN}✓ Updated ~/.cursor/skills/agent-notify/SKILL.md${NC}"
 fi
 
 # 6. Restart Daemon if previously running
