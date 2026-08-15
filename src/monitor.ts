@@ -3,6 +3,7 @@ import os from 'node:os';
 import type { SystemMetrics, MonitorConfig } from './types.js';
 import { TelegramClient } from './telegram.js';
 import { resolveConfig } from './config.js';
+import { metricsStore } from './metrics_store.js';
 
 let lastCpuTimes: { idle: number; total: number } | null = null;
 
@@ -156,6 +157,10 @@ export async function checkAndEvaluateAlerts(
   const alertOnRecovery = monitor.alertOnRecovery !== false;
 
   const metrics = getSystemMetrics();
+  
+  // Record snapshot in 7-day rolling history store
+  metricsStore.recordMetrics(metrics);
+
   const now = Date.now();
   const issues: string[] = [];
   const recovered: string[] = [];

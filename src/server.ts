@@ -7,6 +7,7 @@ import { messageStore } from './store.js';
 import { getNetworkAddresses } from './network.js';
 import { resolveConfig, getConfigDir } from './config.js';
 import { getSystemMetrics, startMonitorService } from './monitor.js';
+import { metricsStore } from './metrics_store.js';
 import type { NetworkAddresses } from './types.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -177,6 +178,15 @@ export function createServer(): http.Server {
         metrics,
         monitor: config.monitor || { enabled: false },
       }));
+      return;
+    }
+
+    // API: GET /api/system/history (7-day rolling time-series)
+    if (pathname === '/api/system/history' && req.method === 'GET') {
+      const range = (parsedUrl.searchParams.get('range') || '24h') as '1h' | '6h' | '24h' | '7d';
+      const history = metricsStore.getHistory(range);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(history));
       return;
     }
 

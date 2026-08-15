@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>agent-notify — AI Message & Notification Feed</title>
+  <title>agent-notify — AI Messages & System Dashboard</title>
   <link rel="stylesheet" href="/app.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -19,13 +19,24 @@
           <span class="brand-name">agent-notify</span>
           <span class="version-badge">v1.0</span>
         </div>
+
+        <!-- View Navigation Tabs -->
+        <nav class="view-tabs">
+          <button class="view-tab active" id="tabMessages" data-view="messages">
+            <span>💬</span> Messages
+          </button>
+          <button class="view-tab" id="tabSystem" data-view="system">
+            <span>📊</span> System Metrics
+          </button>
+        </nav>
+
         <div class="live-status" id="liveStatus" title="Real-time SSE Connection Active">
           <span class="status-dot"></span>
           <span class="status-label">Live</span>
         </div>
       </div>
 
-      <div class="header-center">
+      <div class="header-center" id="searchHeaderContainer">
         <div class="search-bar">
           <span class="search-icon">🔍</span>
           <input type="text" id="searchInput" placeholder="Search messages, agents, answers..." autocomplete="off" />
@@ -34,7 +45,6 @@
       </div>
 
       <div class="header-right">
-        <!-- Network links chips -->
         <div class="network-chips" id="networkChips">
           <button class="chip" id="tailscaleChip" title="Click to copy Tailscale link">
             <span class="chip-icon">🌐</span>
@@ -54,7 +64,7 @@
 
     <!-- Main Layout -->
     <div class="app-layout">
-      <!-- Sidebar -->
+      <!-- Sidebar (for Messages view) -->
       <aside class="sidebar" id="sidebar">
         <!-- Agents Group -->
         <div class="sidebar-section">
@@ -144,28 +154,177 @@
         </div>
       </aside>
 
-      <!-- Main Feed -->
+      <!-- Main Content Area -->
       <main class="main-content">
-        <!-- Feed Controls Bar -->
-        <div class="feed-header">
-          <div class="feed-filters-summary" id="filtersSummary">
-            <span>Showing <strong id="activeFilterLabel">all messages</strong></span>
+        <!-- VIEW 1: MESSAGES FEED -->
+        <div id="messagesView" class="view-panel active">
+          <!-- Feed Controls Bar -->
+          <div class="feed-header">
+            <div class="feed-filters-summary" id="filtersSummary">
+              <span>Showing <strong id="activeFilterLabel">all messages</strong></span>
+            </div>
+            <div class="feed-actions">
+              <button id="refreshBtn" class="btn-sm" title="Refresh messages">
+                🔄 Refresh
+              </button>
+              <button id="clearFiltersBtn" class="btn-sm btn-ghost" style="display: none;">
+                Reset Filters
+              </button>
+            </div>
           </div>
-          <div class="feed-actions">
-            <button id="refreshBtn" class="btn-sm" title="Refresh messages">
-              🔄 Refresh
-            </button>
-            <button id="clearFiltersBtn" class="btn-sm btn-ghost" style="display: none;">
-              Reset Filters
-            </button>
+
+          <!-- Message Feed List -->
+          <div class="feed-container" id="feedContainer">
+            <div class="feed-loading" id="feedLoading">
+              <div class="spinner"></div>
+              <span>Loading message stream...</span>
+            </div>
           </div>
         </div>
 
-        <!-- Message Feed List -->
-        <div class="feed-container" id="feedContainer">
-          <div class="feed-loading" id="feedLoading">
-            <div class="spinner"></div>
-            <span>Loading message stream...</span>
+        <!-- VIEW 2: SYSTEM METRICS & 7-DAY CHARTS -->
+        <div id="systemView" class="view-panel" style="display: none;">
+          <div class="metrics-dashboard">
+            <!-- Header bar for System View -->
+            <div class="metrics-top-bar">
+              <div class="metrics-host-info">
+                <span class="host-pill" id="metricsHostPill">🖥️ Host: loading...</span>
+                <span class="uptime-pill" id="metricsUptimePill">⏱️ Uptime: --</span>
+                <span class="monitor-status-pill" id="metricsMonitorPill">🟢 Monitoring Active</span>
+              </div>
+              <div class="metrics-range-controls">
+                <span class="range-label">Time Range:</span>
+                <div class="btn-group" id="rangeBtnGroup">
+                  <button class="btn-range" data-range="1h">1 Hour</button>
+                  <button class="btn-range" data-range="6h">6 Hours</button>
+                  <button class="btn-range active" data-range="24h">24 Hours</button>
+                  <button class="btn-range" data-range="7d">7 Days</button>
+                </div>
+                <button id="refreshMetricsBtn" class="btn-sm" title="Refresh metrics">🔄</button>
+              </div>
+            </div>
+
+            <!-- Live Metric Summary Cards -->
+            <div class="metric-cards-grid">
+              <!-- Card 1: CPU -->
+              <div class="metric-card">
+                <div class="metric-card-header">
+                  <span class="metric-card-title">⚡ CPU Usage</span>
+                  <span class="metric-card-badge" id="liveCpuCores">4 Cores</span>
+                </div>
+                <div class="metric-card-value" id="liveCpuVal">--%</div>
+                <div class="metric-card-sub" id="liveCpuLoad">Load: --, --, --</div>
+                <div class="metric-progress-bg">
+                  <div class="metric-progress-bar bar-cpu" id="barCpu" style="width: 0%;"></div>
+                </div>
+              </div>
+
+              <!-- Card 2: RAM -->
+              <div class="metric-card">
+                <div class="metric-card-header">
+                  <span class="metric-card-title">🧠 RAM Memory</span>
+                  <span class="metric-card-badge" id="liveRamTotal">-- MB</span>
+                </div>
+                <div class="metric-card-value" id="liveRamVal">--%</div>
+                <div class="metric-card-sub" id="liveRamDetails">Free: -- MB / Used: -- MB</div>
+                <div class="metric-progress-bg">
+                  <div class="metric-progress-bar bar-ram" id="barRam" style="width: 0%;"></div>
+                </div>
+              </div>
+
+              <!-- Card 3: Disk -->
+              <div class="metric-card">
+                <div class="metric-card-header">
+                  <span class="metric-card-title">💾 Disk Space ( / )</span>
+                  <span class="metric-card-badge" id="liveDiskTotal">-- GB</span>
+                </div>
+                <div class="metric-card-value" id="liveDiskVal">--%</div>
+                <div class="metric-card-sub" id="liveDiskDetails">Free: -- GB / Used: -- GB</div>
+                <div class="metric-progress-bg">
+                  <div class="metric-progress-bar bar-disk" id="barDisk" style="width: 0%;"></div>
+                </div>
+              </div>
+
+              <!-- Card 4: Temperature -->
+              <div class="metric-card">
+                <div class="metric-card-header">
+                  <span class="metric-card-title">🌡️ CPU Temperature</span>
+                  <span class="metric-card-badge" id="liveTempStatus">Thermal</span>
+                </div>
+                <div class="metric-card-value" id="liveTempVal">--°C</div>
+                <div class="metric-card-sub" id="liveTempDetails">Threshold: 80°C</div>
+                <div class="metric-progress-bg">
+                  <div class="metric-progress-bar bar-temp" id="barTemp" style="width: 0%;"></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Interactive Historical Time-Series SVG Charts -->
+            <div class="charts-grid">
+              <!-- Chart 1: CPU & Load Trend -->
+              <div class="chart-box">
+                <div class="chart-box-header">
+                  <div class="chart-title-wrap">
+                    <span class="chart-title">CPU Utilization Trend</span>
+                    <span class="chart-subtitle" id="cpuChartSub">7-day rolling window</span>
+                  </div>
+                  <div class="chart-legend">
+                    <span class="legend-item"><span class="legend-dot dot-cpu"></span> CPU %</span>
+                  </div>
+                </div>
+                <div class="chart-svg-wrap" id="cpuChartContainer">
+                  <!-- SVG injected here -->
+                </div>
+              </div>
+
+              <!-- Chart 2: RAM Memory Trend -->
+              <div class="chart-box">
+                <div class="chart-box-header">
+                  <div class="chart-title-wrap">
+                    <span class="chart-title">RAM Consumption Trend</span>
+                    <span class="chart-subtitle" id="ramChartSub">Memory utilization over time</span>
+                  </div>
+                  <div class="chart-legend">
+                    <span class="legend-item"><span class="legend-dot dot-ram"></span> RAM %</span>
+                  </div>
+                </div>
+                <div class="chart-svg-wrap" id="ramChartContainer">
+                  <!-- SVG injected here -->
+                </div>
+              </div>
+
+              <!-- Chart 3: Disk Utilization Trend -->
+              <div class="chart-box">
+                <div class="chart-box-header">
+                  <div class="chart-title-wrap">
+                    <span class="chart-title">Disk Storage Trend</span>
+                    <span class="chart-subtitle" id="diskChartSub">Root filesystem occupancy</span>
+                  </div>
+                  <div class="chart-legend">
+                    <span class="legend-item"><span class="legend-dot dot-disk"></span> Disk %</span>
+                  </div>
+                </div>
+                <div class="chart-svg-wrap" id="diskChartContainer">
+                  <!-- SVG injected here -->
+                </div>
+              </div>
+
+              <!-- Chart 4: CPU Temperature Trend -->
+              <div class="chart-box">
+                <div class="chart-box-header">
+                  <div class="chart-title-wrap">
+                    <span class="chart-title">CPU Temperature Trend</span>
+                    <span class="chart-subtitle" id="tempChartSub">Thermal profile over time</span>
+                  </div>
+                  <div class="chart-legend">
+                    <span class="legend-item"><span class="legend-dot dot-temp"></span> Temp °C</span>
+                  </div>
+                </div>
+                <div class="chart-svg-wrap" id="tempChartContainer">
+                  <!-- SVG injected here -->
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </main>
