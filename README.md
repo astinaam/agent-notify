@@ -30,13 +30,32 @@
 
 ## 📦 Installation
 
+### Option 1: One-Line Installer (Recommended)
+Run the automated installer to clone, build, link the CLI globally, and install agent skills:
+
 ```bash
-# Clone and link globally
+curl -fsSL https://raw.githubusercontent.com/astinaam/agent-notify/main/install.sh | bash
+```
+
+### Option 2: Manual Clone & Install
+```bash
 git clone https://github.com/astinaam/agent-notify.git
 cd agent-notify
-npm install
-npm run build
-npm link
+./install.sh
+```
+
+---
+
+## 🔄 Updating to Latest Version
+
+Run the updater anytime to pull the latest changes, rebuild, and reload background daemons:
+
+```bash
+# Via one-liner:
+curl -fsSL https://raw.githubusercontent.com/astinaam/agent-notify/main/update.sh | bash
+
+# Or from inside the cloned directory:
+./update.sh
 ```
 
 ---
@@ -44,6 +63,8 @@ npm link
 ## ⚡ Quick Start & Setup
 
 ### Step 1: Configure Telegram Bot
+Run the guided interactive setup:
+
 ```bash
 agent-notify setup
 ```
@@ -51,12 +72,15 @@ agent-notify setup
 The wizard will:
 1. Guide you to get a Bot Token from [@BotFather](https://t.me/BotFather) and validate it.
 2. Auto-detect your Chat ID when you send a message to your bot.
-3. Send a test message to confirm everything works.
+3. Send a test ping to confirm everything is working.
 
-### Step 2: Start the Web Dashboard
+### Step 2: Open / Start Web Dashboard
+The web dashboard auto-spawns silently in the background whenever you send a message or ask a question. To view your access links:
+
 ```bash
-agent-notify serve
+agent-notify links
 ```
+
 Output:
 ```
   Access URLs:
