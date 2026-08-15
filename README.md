@@ -14,17 +14,23 @@
 
 - 🚀 **Dual Interfaces**: Use as a terminal CLI tool or as an MCP Server (`agent-notify mcp`).
 - 🌐 **Real-Time Web Dashboard (`agent-notify serve`)**:
+  - **Dual Views**: Toggle between **💬 Messages Feed** and **📊 System Metrics & 7-Day Graphs**.
   - Persistent message history stored locally in `~/.config/agent-notify/messages.json`.
   - **Grouped by Agents** (e.g. `Antigravity`, `Claude`, `ReviewBot`, `Deployer`).
   - **1-Click Copy Buttons**: Copy full message text, markdown, or direct links.
   - **Dual Network Links**: Dual access via **Tailscale** (`http://<tailscale-ip>:4173`) and **Local LAN** (`http://<lan-ip>:4173`).
   - **Real-Time SSE Live Stream**: Messages appear instantly in the browser without page refresh.
   - Search, filter by severity level (`INFO`, `SUCCESS`, `WARN`, `ERROR`), and filter by message type.
-- 🤖 **Interactive Human-in-the-Loop (`ask`)**: AI agents can prompt you with questions and clickable buttons (e.g. `[Approve] [Reject]`), blocking until you tap a choice on Telegram.
+- 📊 **Ultra-Lightweight System Resource Alerts & 7-Day History**:
+  - Near-zero overhead (< 0.1ms per tick, 0 extra daemons) monitor for CPU, RAM, Disk, and Temperature.
+  - Automated Telegram alert notifications when thresholds are breached, with auto-recovery alerts.
+  - 7-day historical time-series storage with responsive SVG charts (1h, 6h, 24h, 7d ranges).
+- 🤖 **Interactive Human-in-the-Loop (`ask`)**: AI agents can prompt you with questions and clickable buttons (e.g. `[Approve] [Reject]`), blocking until you tap a choice on Telegram or the Web UI.
 - 🎨 **Telegram Inline Web Links**: Each Telegram message automatically includes inline buttons for instant web view over Tailscale & LAN.
 - 📎 **File & Media Delivery**: Upload logs, screenshots, images, PDFs, and diffs.
 - 📥 **UNIX Pipe Support**: Pipe command outputs directly (`cat build.log | agent-notify send --level error`).
 - 🧙‍♂️ **Guided Setup Wizard**: One command (`agent-notify setup`) validates your bot token and auto-detects your Telegram chat ID.
+- 🧠 **Multi-Environment Agent Skills**: Automatically installs skill files into `~/.agents`, `~/.gemini`, and `~/.cursor`.
 
 ---
 
@@ -194,26 +200,40 @@ Add to your MCP settings file:
 
 ## 🌐 Web Dashboard Features
 
-1. **Agent Grouping**: Filter message feeds by specific agents (`Antigravity`, `Claude`, etc.) with message counters and last-active times.
-2. **Copy Actions**: Instant 1-click button to copy message content, markdown, or shareable direct URLs.
-3. **Deep Linking**: Access specific messages directly via `/m/<msg_id>` or `/#msg-<msg_id>`.
-4. **Tailscale & LAN Support**: Automatically detects Tailscale MagicDNS/IP and Local LAN IP to provide access from your laptop, mobile phone, or desktop on any network.
-5. **Real-Time Live Feed**: Uses Server-Sent Events (SSE) to display incoming agent messages without browser refresh.
+1. **Dual Views**: Toggle between **💬 Messages Feed** and **📊 System Metrics & Performance Charts**.
+2. **7-Day Historical Charts**: Interactive time-series SVG graphs for CPU %, RAM %, Disk %, and Thermal °C with hover tooltips and range selectors (`1h`, `6h`, `24h`, `7d`).
+3. **Agent Grouping**: Filter message feeds by specific agents (`Antigravity`, `Claude`, etc.) with message counters and last-active times.
+4. **Copy Actions**: Instant 1-click button to copy message content, markdown, or shareable direct URLs.
+5. **Interactive 2-Way Approvals**: Answer agent questions directly from the browser or Telegram.
+6. **Deep Linking**: Access specific messages directly via `/m/<msg_id>` or `/#msg-<msg_id>`.
+7. **Tailscale & LAN Support**: Automatically detects Tailscale MagicDNS/IP and Local LAN IP to provide access from your laptop, mobile phone, or desktop on any network.
+8. **Real-Time Live Feed**: Uses Server-Sent Events (SSE) to display incoming agent messages without browser refresh.
 
 ---
 
 ## ⚙️ Configuration
 
-Stored in `~/.config/agent-notify/config.json` (or via ENV):
+Stored in `~/.config/agent-notify/config.json` (or via ENV variables):
 
 ```json
 {
   "botToken": "123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11",
   "chatId": "987654321",
+  "topicId": null,
   "serverPort": 4173,
   "includeLinks": true,
   "tailscaleHost": "my-node.tailnet1234.ts.net",
-  "lanHost": "192.168.1.50"
+  "lanHost": "192.168.1.50",
+  "monitor": {
+    "enabled": false,
+    "cpuThresholdPct": 90,
+    "ramThresholdPct": 90,
+    "diskThresholdPct": 85,
+    "tempThresholdC": 80,
+    "checkIntervalSec": 60,
+    "cooldownSec": 1800,
+    "alertOnRecovery": true
+  }
 }
 ```
 
