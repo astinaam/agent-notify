@@ -44,7 +44,7 @@ fi
 echo -e "${GREEN}✓ Prerequisites met: Node.js $(node -v), npm $(npm -v), git$(NC)"
 
 # 2. Clone or Update Repository
-if [ -d "$INSTALL_DIR/.git" ]; then
+if [ -e "$INSTALL_DIR/.git" ]; then
   echo -e "${CYAN}→ Updating existing repository at $INSTALL_DIR...${NC}"
   cd "$INSTALL_DIR"
   git fetch --all --prune

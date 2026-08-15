@@ -7,11 +7,11 @@ set -e
 # ==============================================================================
 
 # Determine repo directory
-if [ -n "$AGENT_NOTIFY_DIR" ] && [ -d "$AGENT_NOTIFY_DIR/.git" ]; then
+if [ -n "$AGENT_NOTIFY_DIR" ] && [ -e "$AGENT_NOTIFY_DIR/.git" ]; then
   INSTALL_DIR="$AGENT_NOTIFY_DIR"
-elif [ -d "$HOME/.local/share/agent-notify/.git" ]; then
+elif [ -e "$HOME/.local/share/agent-notify/.git" ]; then
   INSTALL_DIR="$HOME/.local/share/agent-notify"
-elif [ -d "$(dirname "$0")/.git" ]; then
+elif [ -e "$(dirname "$0")/.git" ]; then
   INSTALL_DIR="$(cd "$(dirname "$0")" && pwd)"
 else
   echo -e "\033[0;31m✗ Could not locate agent-notify installation directory.\033[0m"
