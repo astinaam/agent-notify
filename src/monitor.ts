@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import os from 'node:os';
+import { execSync } from 'node:child_process';
 import type { SystemMetrics, MonitorConfig } from './types.js';
 import { TelegramClient } from './telegram.js';
 import { resolveConfig } from './config.js';
@@ -125,6 +126,57 @@ export function getSystemMetrics(diskPath = '/'): SystemMetrics {
   };
 }
 
+// Process details structure
+export interface ProcessInfo {
+  pid: string;
+  user: string;
+  cpuPct: string;
+  memPct: string;
+  memMb: string;
+  comm: string;
+}
+
+export function getTopProcesses(type: 'cpu' | 'mem', limit = 5): ProcessInfo[] {
+  try {
+    const sortFlag = type === 'cpu' ? '-%cpu' : '-rss';
+    const cmd = `ps -eo pid,user,%cpu,%mem,rss,comm --sort=${sortFlag} | head -n ${limit + 1}`;
+    const output = execSync(cmd, { encoding: 'utf8', timeout: 2000 });
+    const lines = output.trim().split('\n');
+
+    const procs: ProcessInfo[] = [];
+    for (let i = 1; i < lines.length; i++) {
+      const parts = lines[i].trim().split(/\s+/);
+      if (parts.length >= 6) {
+        const pid = parts[0];
+        const user = parts[1];
+        const cpuPct = parts[2];
+        const memPct = parts[3];
+        const rssKb = Number.parseInt(parts[4], 10) || 0;
+        const memMb = `${Math.round(rssKb / 1024)}MB`;
+        const comm = parts.slice(5).join(' ');
+        procs.push({ pid, user, cpuPct, memPct, memMb, comm });
+      }
+    }
+    return procs;
+  } catch {
+    return [];
+  }
+}
+
+export function formatProcessList(procs: ProcessInfo[], highlight: 'cpu' | 'mem'): string {
+  if (procs.length === 0) return '';
+
+  if (highlight === 'cpu') {
+    return procs
+      .map((p) => `• <code>${p.comm}</code> (PID ${p.pid}) — <b>${p.cpuPct}% CPU</b> (${p.memMb})`)
+      .join('\n');
+  } else {
+    return procs
+      .map((p) => `• <code>${p.comm}</code> (PID ${p.pid}) — <b>${p.memMb}</b> (${p.memPct}% RAM), ${p.cpuPct}% CPU`)
+      .join('\n');
+  }
+}
+
 // Alert State Tracker (persisted in-memory with cooldowns)
 interface AlertState {
   isAlerting: boolean;
@@ -157,13 +209,15 @@ export async function checkAndEvaluateAlerts(
   const alertOnRecovery = monitor.alertOnRecovery !== false;
 
   const metrics = getSystemMetrics();
-  
+
   // Record snapshot in 7-day rolling history store
   metricsStore.recordMetrics(metrics);
 
   const now = Date.now();
   const issues: string[] = [];
   const recovered: string[] = [];
+  let needTopCpu = false;
+  let needTopRam = false;
 
   // Check RAM
   const ramState = alertStates.ram;
@@ -173,6 +227,7 @@ export async function checkAndEvaluateAlerts(
       ramState.isAlerting = true;
       ramState.lastAlertTime = now;
       ramState.lastAlertValue = `${metrics.ram.usedPct}%`;
+      needTopRam = true;
     }
   } else if (ramState.isAlerting) {
     ramState.isAlerting = false;
@@ -201,6 +256,7 @@ export async function checkAndEvaluateAlerts(
       cpuState.isAlerting = true;
       cpuState.lastAlertTime = now;
       cpuState.lastAlertValue = `${metrics.cpu.usagePct}%`;
+      needTopCpu = true;
     }
   } else if (cpuState.isAlerting) {
     cpuState.isAlerting = false;
@@ -215,6 +271,7 @@ export async function checkAndEvaluateAlerts(
       tempState.isAlerting = true;
       tempState.lastAlertTime = now;
       tempState.lastAlertValue = `${metrics.tempC}°C`;
+      needTopCpu = true; // CPU procs cause high temp
     }
   } else if (tempState.isAlerting) {
     tempState.isAlerting = false;
@@ -225,9 +282,28 @@ export async function checkAndEvaluateAlerts(
   if (issues.length > 0) {
     try {
       const client = new TelegramClient(fullConfig);
+
+      let processSection = '';
+
+      // Collect top processes if CPU or RAM triggered
+      if (needTopRam) {
+        const topRamProcs = getTopProcesses('mem', 5);
+        if (topRamProcs.length > 0) {
+          processSection += `\n\n🧠 <b>Top 5 Memory-Consuming Processes:</b>\n` + formatProcessList(topRamProcs, 'mem');
+        }
+      }
+
+      if (needTopCpu) {
+        const topCpuProcs = getTopProcesses('cpu', 5);
+        if (topCpuProcs.length > 0) {
+          processSection += `\n\n⚡ <b>Top 5 CPU-Consuming Processes:</b>\n` + formatProcessList(topCpuProcs, 'cpu');
+        }
+      }
+
       const messageText =
         `🚨 <b>SYSTEM RESOURCE ALERT</b> [Host: <code>${metrics.hostname}</code>]\n\n` +
         issues.join('\n') +
+        processSection +
         `\n\n📊 <b>System Snapshot:</b>\n` +
         `• CPU: ${metrics.cpu.usagePct}% (Load: ${metrics.cpu.loadAvg.join(', ')})\n` +
         `• RAM: ${metrics.ram.usedPct}% (${metrics.ram.usedMb}MB / ${metrics.ram.totalMb}MB)\n` +
