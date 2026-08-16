@@ -139,32 +139,54 @@ export interface ProcessInfo {
 export function getTopProcesses(type: 'cpu' | 'mem', limit = 5): ProcessInfo[] {
   try {
     const sortFlag = type === 'cpu' ? '-%cpu' : '-rss';
-    const cmd = `ps -eo pid,user,%cpu,%mem,rss,comm --sort=${sortFlag} | head -n ${limit + 1}`;
-    const output = execSync(cmd, { encoding: 'utf8', timeout: 2000 });
-    const lines = output.trim().split('\n');
+    const output = execSync(`ps -eo pid,user,%cpu,%mem,rss,comm --sort=${sortFlag}`, {
+      encoding: 'utf8',
+      timeout: 5000,
+      env: {
+        ...process.env,
+        PATH: `/usr/bin:/bin:/usr/sbin:/sbin:${process.env.PATH || ''}`,
+      },
+    });
 
+    const lines = output.trim().split('\n');
     const procs: ProcessInfo[] = [];
-    for (let i = 1; i < lines.length; i++) {
-      const parts = lines[i].trim().split(/\s+/);
+
+    for (let i = 1; i < lines.length && procs.length < limit; i++) {
+      const line = lines[i].trim();
+      if (!line) continue;
+
+      const parts = line.split(/\s+/);
       if (parts.length >= 6) {
         const pid = parts[0];
         const user = parts[1];
-        const cpuPct = parts[2];
-        const memPct = parts[3];
+        const cpuPct = Number.parseFloat(parts[2]) || 0;
+        const memPct = Number.parseFloat(parts[3]) || 0;
         const rssKb = Number.parseInt(parts[4], 10) || 0;
         const memMb = `${Math.round(rssKb / 1024)}MB`;
         const comm = parts.slice(5).join(' ');
-        procs.push({ pid, user, cpuPct, memPct, memMb, comm });
+
+        // Exclude ephemeral 'ps' itself to show real long-running processes
+        if (comm === 'ps') continue;
+
+        procs.push({
+          pid,
+          user,
+          cpuPct: cpuPct.toFixed(1),
+          memPct: memPct.toFixed(1),
+          memMb,
+          comm,
+        });
       }
     }
     return procs;
-  } catch {
+  } catch (err: any) {
+    console.error(`[SystemMonitor] getTopProcesses error: ${err.message}`);
     return [];
   }
 }
 
 export function formatProcessList(procs: ProcessInfo[], highlight: 'cpu' | 'mem'): string {
-  if (procs.length === 0) return '';
+  if (!procs || procs.length === 0) return '';
 
   if (highlight === 'cpu') {
     return procs
