@@ -59,7 +59,9 @@ export class TelegramClient {
   }
 
   private formatLevelPrefix(level?: NotificationLevel, agent?: string): string {
-    if (agent === 'SystemMonitor') return '';
+    if (!level || agent === 'SystemMonitor' || agent === 'BotDaemon' || agent === 'default') {
+      return '';
+    }
     const agentTag = agent ? `[<b>${agent}</b>] ` : '';
     switch (level) {
       case 'success':
@@ -71,7 +73,7 @@ export class TelegramClient {
       case 'info':
         return `ℹ️ ${agentTag}<b>INFO</b>\n`;
       default:
-        return agent ? `🤖 <b>[${agent}]</b>\n` : '';
+        return '';
     }
   }
 
