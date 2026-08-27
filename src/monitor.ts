@@ -305,33 +305,57 @@ export async function checkAndEvaluateAlerts(
     try {
       const client = new TelegramClient(fullConfig);
 
+      let topCulprit = '';
       let processSection = '';
 
       // Collect top processes if CPU or RAM triggered
       if (needTopRam) {
         const topRamProcs = getTopProcesses('mem', 5);
         if (topRamProcs.length > 0) {
-          processSection += `\n\n🧠 <b>Top 5 Memory-Consuming Processes:</b>\n` + formatProcessList(topRamProcs, 'mem');
+          if (!topCulprit) {
+            topCulprit = `Culprit: ${topRamProcs[0].comm} (PID ${topRamProcs[0].pid}, ${topRamProcs[0].memMb} RAM / ${topRamProcs[0].memPct}%)`;
+          }
+          processSection += `\n\n🧠 <b>Top 5 Memory Processes:</b>\n` + formatProcessList(topRamProcs, 'mem');
         }
       }
 
       if (needTopCpu) {
         const topCpuProcs = getTopProcesses('cpu', 5);
         if (topCpuProcs.length > 0) {
-          processSection += `\n\n⚡ <b>Top 5 CPU-Consuming Processes:</b>\n` + formatProcessList(topCpuProcs, 'cpu');
+          topCulprit = `Culprit: ${topCpuProcs[0].comm} (PID ${topCpuProcs[0].pid}, ${topCpuProcs[0].cpuPct}% CPU)`;
+          processSection += `\n\n⚡ <b>Top 5 CPU Processes:</b>\n` + formatProcessList(topCpuProcs, 'cpu');
         }
       }
 
-      const messageText =
-        `🚨 <b>SYSTEM RESOURCE ALERT</b> [Host: <code>${metrics.hostname}</code>]\n\n` +
+      const triggerBadges: string[] = [];
+      if (metrics.cpu.usagePct >= cpuThresh) {
+        triggerBadges.push(`🔥 CPU ${metrics.cpu.usagePct}%`);
+      }
+      if (metrics.ram.usedPct >= ramThresh) {
+        triggerBadges.push(`🧠 RAM ${metrics.ram.usedPct}%`);
+      }
+      if (metrics.disk.usedPct >= diskThresh) {
+        triggerBadges.push(`💾 Disk ${metrics.disk.usedPct}%`);
+      }
+      if (metrics.tempC !== undefined && metrics.tempC >= tempThresh) {
+        triggerBadges.push(`🌡️ Temp ${metrics.tempC}°C`);
+      }
+
+      const headlineSummary = triggerBadges.join(' • ');
+
+      let messageText = `🚨 <b>${headlineSummary} [${metrics.hostname}]</b>\n`;
+      if (topCulprit) {
+        messageText += `⚡ <i>${topCulprit}</i>\n\n`;
+      } else {
+        messageText += '\n';
+      }
+
+      messageText +=
+        `⚠️ <b>Active Triggers:</b>\n` +
         issues.join('\n') +
         processSection +
-        `\n\n📊 <b>System Snapshot:</b>\n` +
-        `• CPU: ${metrics.cpu.usagePct}% (Load: ${metrics.cpu.loadAvg.join(', ')})\n` +
-        `• RAM: ${metrics.ram.usedPct}% (${metrics.ram.usedMb}MB / ${metrics.ram.totalMb}MB)\n` +
-        `• Disk: ${metrics.disk.usedPct}% (${metrics.disk.usedGb}GB / ${metrics.disk.totalGb}GB)\n` +
-        (metrics.tempC !== undefined ? `• Temp: ${metrics.tempC}°C\n` : '') +
-        `• Uptime: ${Math.floor(metrics.uptimeSec / 3600)}h ${Math.floor((metrics.uptimeSec % 3600) / 60)}m`;
+        `\n\n📊 <b>Snapshot:</b> CPU ${metrics.cpu.usagePct}% (Load ${metrics.cpu.loadAvg.join(', ')}) | RAM ${metrics.ram.usedPct}% (${metrics.ram.usedMb}MB) | Disk ${metrics.disk.usedPct}% (${metrics.disk.usedGb}GB)` +
+        (metrics.tempC !== undefined ? ` | Temp ${metrics.tempC}°C` : '');
 
       await client.sendMessage({
         text: messageText,
@@ -349,8 +373,8 @@ export async function checkAndEvaluateAlerts(
     try {
       const client = new TelegramClient(fullConfig);
       const messageText =
-        `✅ <b>SYSTEM RESOURCE RECOVERED</b> [Host: <code>${metrics.hostname}</code>]\n\n` +
-        recovered.map((r) => `• ${r}`).join('\n');
+        `✅ <b>RECOVERED [${metrics.hostname}]</b>: ${recovered.join(' • ')}\n\n` +
+        `📊 <b>Current:</b> CPU ${metrics.cpu.usagePct}% | RAM ${metrics.ram.usedPct}% | Disk ${metrics.disk.usedPct}%`;
 
       await client.sendMessage({
         text: messageText,

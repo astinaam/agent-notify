@@ -618,7 +618,9 @@ Here are the commands you can use anytime:
     const ramBar = this.renderProgressBar(m.ram.usedPct);
     const diskBar = this.renderProgressBar(m.disk.usedPct);
 
-    let text = `🖥️ <b>Host:</b> <code>${m.hostname}</code> (Uptime: ${hours}h ${mins}m)\n\n`;
+    let text = `📊 <b>Status [${m.hostname}]: CPU ${m.cpu.usagePct}% | RAM ${m.ram.usedPct}%${m.tempC !== undefined ? ` | ${m.tempC}°C` : ''}</b>\n`;
+    text += `⏱️ <b>Uptime:</b> ${hours}h ${mins}m | 👥 <b>Agents:</b> ${taskManager.getActiveCount()} running\n\n`;
+
     text += `<b>CPU:</b> ${m.cpu.usagePct}%\n<code>${cpuBar}</code>\nLoad: ${m.cpu.loadAvg.join(', ')} (${m.cpu.cores} cores)\n\n`;
     text += `<b>RAM:</b> ${m.ram.usedPct}% (${(m.ram.usedMb / 1024).toFixed(1)}GB / ${(m.ram.totalMb / 1024).toFixed(1)}GB)\n<code>${ramBar}</code>\n\n`;
     text += `<b>Disk (/):</b> ${m.disk.usedPct}% (${m.disk.usedGb}GB / ${m.disk.totalGb}GB)\n<code>${diskBar}</code>\n\n`;
@@ -627,7 +629,6 @@ Here are the commands you can use anytime:
       text += `🌡️ <b>Temperature:</b> ${m.tempC}°C\n`;
     }
 
-    text += `\n👥 <b>Active Agents:</b> ${taskManager.getActiveCount()} running\n`;
     text += `🔔 <b>Alert Monitor:</b> ${mon.enabled ? '✅ ENABLED' : '⏸️ DISABLED'}`;
     return text;
   }
