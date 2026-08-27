@@ -43,6 +43,9 @@ export function saveConfig(config: Partial<TelegramConfig>): void {
     monitor: config.monitor
       ? { ...(existing.monitor || {}), ...config.monitor }
       : existing.monitor,
+    botListener: config.botListener
+      ? { ...(existing.botListener || {}), ...config.botListener }
+      : existing.botListener,
   };
   fs.writeFileSync(getConfigPath(), JSON.stringify(merged, null, 2), { mode: 0o600 });
 }
@@ -106,6 +109,17 @@ export function resolveConfig(overrides?: Partial<TelegramConfig>): TelegramConf
     alertOnRecovery: overrides?.monitor?.alertOnRecovery ?? saved.monitor?.alertOnRecovery ?? true,
   };
 
+  const botListener = {
+    enabled: overrides?.botListener?.enabled ?? saved.botListener?.enabled ?? true,
+    allowShellCommands: overrides?.botListener?.allowShellCommands ?? saved.botListener?.allowShellCommands ?? true,
+    autoAgent: overrides?.botListener?.autoAgent ?? saved.botListener?.autoAgent ?? true,
+    workspaceDir:
+      overrides?.botListener?.workspaceDir ||
+      process.env.AGENT_NOTIFY_WORKSPACE_DIR ||
+      saved.botListener?.workspaceDir ||
+      process.cwd(),
+  };
+
   return {
     botToken,
     chatId: String(chatId),
@@ -115,6 +129,7 @@ export function resolveConfig(overrides?: Partial<TelegramConfig>): TelegramConf
     tailscaleHost,
     lanHost,
     monitor,
+    botListener,
   };
 }
 

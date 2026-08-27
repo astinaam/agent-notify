@@ -1,12 +1,17 @@
 ---
 name: agent-notify
 description: >-
-  Send Telegram push notifications, upload files/logs, request interactive human-in-the-loop decisions (with clickable buttons and timeout), and generate Tailscale/LAN web links using the agent-notify CLI or MCP server. Use whenever completing a long task, alerting on failures, asking for human approval, or sharing artifacts with the user.
+  Send Telegram push notifications, upload files/logs, receive 24/7 continuous Telegram commands/prompts, run Cursor & Antigravity agents with live status updates, persistent markdown memory & system prompts, request interactive decisions (with buttons and timeout), manage auto-restarting systemd background daemon, and generate Tailscale/LAN web links.
 ---
 
 # agent-notify: Telegram & Web Notification Gateway for AI Agents
 
-`agent-notify` allows AI agents to push alerts to the user's phone via Telegram, upload files, request approvals via interactive buttons (two-way human-in-the-loop), and track message history on a real-time Web UI accessible over Local LAN and Tailscale.
+`agent-notify` allows AI agents and users to communicate bidirectionally:
+- **Outbound**: Push alerts to Telegram, upload files/reports, and request approvals via interactive buttons.
+- **Inbound (24/7 Continuous)**: Send commands (`/cursor <prompt>`, `/task <prompt>`, `/agents`, `/cancel`, `/memory`, `/prompt`, `/dir`, `/status`, `/top`, `/logs`, `/sh <cmd>`) or text from Telegram anytime, running on an always-on auto-restarting background systemd service.
+- **Live Progress Tickers**: When agents run, the bot provides dynamic in-place updates (animated spinner, elapsed time, host resource load, live stream activity, and inline `🛑 Cancel` button).
+- **Persistent Memory & System Prompt**: Markdown-based persistent memory (`memory.md`) and custom system instructions (`system_prompt.md`), automatically plugged into `/cursor` and `/task` agent executions.
+- **Web UI Dashboard**: Real-time message stream and monitor accessible over Local LAN and Tailscale.
 
 ---
 
@@ -61,7 +66,62 @@ agent-notify ask "Which database environment should I seed?" --agent "Antigravit
 agent-notify ask "Run database migration?" --agent "Antigravity" --options "Yes,No" --json
 ```
 
-### 5. Optional System Resource Alert Monitor (Default: OFF)
+### 5. Persistent Memory & System Prompt Management
+Markdown files live in `~/.config/agent-notify/`:
+- `memory.md`: Persistent user preferences, project facts, notes.
+- `system_prompt.md`: Base system instructions with `{{MEMORY}}` placeholder.
+
+```bash
+# View current persistent memory
+agent-notify memory show
+
+# Append a note to persistent memory
+agent-notify memory add "Primary app runs on port 3000"
+
+# View system prompt with memory injected
+agent-notify prompt show
+```
+
+### 6. Always-On Systemd Service Management (Auto-Start on Boot & Auto-Restart)
+```bash
+# Install and enable 24/7 background service on boot
+agent-notify service install
+
+# Check service status
+agent-notify service status
+
+# Restart / Stop service
+agent-notify service restart
+agent-notify service stop
+```
+
+### 7. Inbound Telegram Commands (Available 24/7 via Bot)
+You can message your Telegram bot directly at any time:
+
+🧠 **AI Coding Agents & Live Tracking:**
+- `/cursor <prompt>` — Dispatch task to **Cursor Agent** (`agent -p --trust -f`) with live progress ticker & memory
+- `/task <prompt>` or `/agy <prompt>` — Dispatch task to **Antigravity AI Agent** (`agy -p`) with live progress ticker & memory
+- `/agents` or `/running` — View all currently running AI agents, PIDs, prompts, and elapsed durations
+- `/cancel [id]` or `/stop [id]` — Stop/kill a running agent task (or tap the inline `🛑 Cancel` button)
+- `/dir [path]` — View or switch workspace execution directory
+
+💾 **Memory & System Prompt:**
+- `/memory` — View persistent memory
+- `/remember <note>` or `/memory add <note>` — Append a new note to persistent memory
+- `/prompt` — View effective system prompt template and plugged memory
+
+📊 **System Health & Shell:**
+- `/status` or `/metrics` — Live CPU, RAM, Disk, Temperature, and Uptime
+- `/top` or `/ps` — Top processes by CPU and Memory utilization
+- `/sh <cmd>` — Execute shell command on host and receive output in Telegram
+- `/ping` — Daemon health check
+
+📜 **Logs & Dashboard:**
+- `/logs [n]` — View last `n` notification logs
+- `/links` — Get Tailscale & Local LAN Web Dashboard URLs
+- `/help` — Interactive menu with quick action buttons
+
+### 8. Optional System Resource Alert Monitor
 ```bash
 # Check system metrics (CPU, RAM, Disk, Temp)
 agent-notify monitor status
@@ -98,6 +158,15 @@ When running within an MCP client, use the native tool calls:
 - `agent_name` (string, optional).
 - `timeout_seconds` (number, optional, default: 300).
 
+### `get_memory`
+- Reads persistent memory notes and host context from `memory.md`.
+
+### `append_memory`
+- `note` (string, required): The note or fact to append to persistent memory.
+
+### `get_system_prompt`
+- Returns the effective system prompt with persistent memory plugged in.
+
 ---
 
 ## 🌐 Web Dashboard & Network Links
@@ -106,22 +175,10 @@ When running within an MCP client, use the native tool calls:
   ```bash
   agent-notify links
   ```
-- Check background daemon status:
+- Check background service status:
   ```bash
-  agent-notify daemon status
+  agent-notify service status
   ```
 - The Web Dashboard is automatically active in the background and accessible at:
   - **Tailscale**: `http://my-node.tailnet1234.ts.net:4173`
   - **Local LAN**: `http://192.168.1.50:4173`
-
----
-
-## 💡 Best Practices for Agents
-
-1. **Always provide an agent name**: Use `--agent "Antigravity"` or `--agent "<ProjectName>"` so the user can easily filter messages on their dashboard.
-2. **Choose accurate severity**:
-   - `success`: Task finished, tests passed, deploy complete.
-   - `warn`: Non-fatal issues, deprecations, retry attempts.
-   - `error`: Broken builds, crashed services, failed operations.
-   - `info`: General updates, progress reports.
-3. **Use `ask` for high-impact actions**: Before running commands like `git push --force`, `rm -rf`, `DROP TABLE`, or production deployments, use `agent-notify ask` to get explicit human approval.

@@ -11,7 +11,7 @@ import type {
 } from './types.js';
 import { messageStore } from './store.js';
 import { getMessageLinks } from './network.js';
-import { ensureServerRunning } from './server.js';
+import { ensureServerRunning, isServerRunning } from './server.js';
 
 export class TelegramClient {
   private botToken: string;
@@ -99,6 +99,8 @@ export class TelegramClient {
       content: options.text,
       title: options.title,
       status: 'delivered',
+      prompt: options.prompt,
+      workspaceDir: options.workspaceDir,
       links,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -349,21 +351,15 @@ export class TelegramClient {
     const questionMessageId = sent.message_id;
     messageStore.updateMessage(msgId, { telegramMessageId: questionMessageId });
 
-    // Step 4: Long polling & Web event checking
+    // Step 4: Long polling & Web/Daemon event checking
     while (Date.now() < deadline) {
-      // Check if user answered via Web Dashboard
-      if (webAnswerReceived) {
-        const answer = (webAnswerReceived as any).response;
-        const answeredBy = (webAnswerReceived as any).answeredBy || 'Web UI';
+      // Check if user answered via Web Dashboard or background BotListener
+      const currentStored = messageStore.getMessage(msgId);
+      if (webAnswerReceived || (currentStored && currentStored.status === 'answered' && currentStored.response)) {
+        const answer = webAnswerReceived ? (webAnswerReceived as any).response : currentStored!.response!;
+        const answeredBy = webAnswerReceived ? (webAnswerReceived as any).answeredBy || 'User' : currentStored!.answeredBy || 'User';
 
-        const finalMarkup = includeLinks ? { inline_keyboard: [this.buildUrlKeyboard(links)] } : undefined;
-        await this.editMessageText(
-          questionMessageId,
-          `❓ ${agentTag}<b>QUESTION</b>\n\n${options.question}\n\n<b>Answered via Web:</b> <code>${answer}</code> ✅ <i>(by ${answeredBy})</i>`,
-          'HTML',
-          finalMarkup
-        ).catch(() => {});
-
+        messageStore.removeListener(`answer_${msgId}`, webAnswerListener);
         return {
           messageId: msgId,
           answered: true,
@@ -371,6 +367,13 @@ export class TelegramClient {
           answeredBy,
           timestamp: Date.now(),
         };
+      }
+
+      // If background daemon is running, BotListener handles polling; we just wait on events
+      const daemonActive = await isServerRunning(this.config.serverPort);
+      if (daemonActive) {
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        continue;
       }
 
       const remainingTime = Math.max(1, Math.min(5, Math.floor((deadline - Date.now()) / 1000)));
@@ -388,7 +391,7 @@ export class TelegramClient {
               const selectedValue = optionMap.get(cq.data) || cq.data;
               await this.answerCallbackQuery(cq.id, `Selected: ${selectedValue}`);
 
-              const answeredBy = cq.from?.username || cq.from?.first_name || 'User';
+              const answeredBy = cq.from?.username ? `@${cq.from.username}` : cq.from?.first_name || 'User';
 
               messageStore.updateMessage(msgId, {
                 status: 'answered',
@@ -400,7 +403,7 @@ export class TelegramClient {
               const finalMarkup = includeLinks ? { inline_keyboard: [this.buildUrlKeyboard(links)] } : undefined;
               await this.editMessageText(
                 questionMessageId,
-                `❓ ${agentTag}<b>QUESTION</b>\n\n${options.question}\n\n<b>Answered:</b> <code>${selectedValue}</code> ✅ <i>(by @${answeredBy})</i>`,
+                `❓ ${agentTag}<b>QUESTION</b>\n\n${options.question}\n\n<b>Answered:</b> <code>${selectedValue}</code> ✅ <i>(by ${answeredBy})</i>`,
                 'HTML',
                 finalMarkup
               ).catch(() => {});
@@ -422,7 +425,7 @@ export class TelegramClient {
 
             if (isFromSameChat && (isReplyToQuestion || (!options.options && msg.text))) {
               const answerText = msg.text || '';
-              const answeredBy = msg.from?.username || msg.from?.first_name || 'User';
+              const answeredBy = msg.from?.username ? `@${msg.from.username}` : msg.from?.first_name || 'User';
 
               messageStore.updateMessage(msgId, {
                 status: 'answered',
@@ -434,7 +437,7 @@ export class TelegramClient {
               const finalMarkup = includeLinks ? { inline_keyboard: [this.buildUrlKeyboard(links)] } : undefined;
               await this.editMessageText(
                 questionMessageId,
-                `❓ ${agentTag}<b>QUESTION</b>\n\n${options.question}\n\n<b>Answered:</b> <code>${answerText}</code> ✅ <i>(by @${answeredBy})</i>`,
+                `❓ ${agentTag}<b>QUESTION</b>\n\n${options.question}\n\n<b>Answered:</b> <code>${answerText}</code> ✅ <i>(by ${answeredBy})</i>`,
                 'HTML',
                 finalMarkup
               ).catch(() => {});

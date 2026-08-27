@@ -7,3 +7,5 @@ export * from './store.js';
 export * from './network.js';
 export * from './server.js';
 export * from './monitor.js';
+export * from './memory.js';
+export * from './task_tracker.js';

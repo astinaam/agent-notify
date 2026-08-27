@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { TelegramClient } from './telegram.js';
 import { resolveConfig, validateConfig } from './config.js';
 import { ensureServerRunning } from './server.js';
+import { loadMemory, appendMemory, getEffectiveSystemPrompt, getMemoryFilePath } from './memory.js';
 import type { NotificationLevel } from './types.js';
 
 export async function runMcpServer(): Promise<void> {
@@ -206,6 +207,98 @@ export async function runMcpServer(): Promise<void> {
             {
               type: 'text',
               text: `Error waiting for user input via Telegram/Web: ${err.message}`,
+            },
+          ],
+        };
+      }
+    }
+  );
+
+  // Tool 4: get_memory
+  server.tool(
+    'get_memory',
+    'Reads persistent memory notes and host context from memory.md.',
+    {},
+    async () => {
+      try {
+        const memory = loadMemory();
+        return {
+          content: [
+            {
+              type: 'text',
+              text: memory,
+            },
+          ],
+        };
+      } catch (err: any) {
+        return {
+          isError: true,
+          content: [
+            {
+              type: 'text',
+              text: `Failed to load memory: ${err.message}`,
+            },
+          ],
+        };
+      }
+    }
+  );
+
+  // Tool 5: append_memory
+  server.tool(
+    'append_memory',
+    'Appends a new persistent note, preference, or fact to memory.md.',
+    {
+      note: z.string().describe('The note or fact to append to persistent memory.'),
+    },
+    async ({ note }) => {
+      try {
+        const entry = appendMemory(note);
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `Successfully added to memory: ${entry}`,
+            },
+          ],
+        };
+      } catch (err: any) {
+        return {
+          isError: true,
+          content: [
+            {
+              type: 'text',
+              text: `Failed to append to memory: ${err.message}`,
+            },
+          ],
+        };
+      }
+    }
+  );
+
+  // Tool 6: get_system_prompt
+  server.tool(
+    'get_system_prompt',
+    'Returns the effective system prompt with persistent memory plugged in.',
+    {},
+    async () => {
+      try {
+        const prompt = getEffectiveSystemPrompt();
+        return {
+          content: [
+            {
+              type: 'text',
+              text: prompt,
+            },
+          ],
+        };
+      } catch (err: any) {
+        return {
+          isError: true,
+          content: [
+            {
+              type: 'text',
+              text: `Failed to get system prompt: ${err.message}`,
             },
           ],
         };

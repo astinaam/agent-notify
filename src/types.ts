@@ -2,7 +2,16 @@ export type NotificationLevel = 'info' | 'success' | 'warn' | 'error';
 
 export type ParseMode = 'MarkdownV2' | 'HTML' | 'Markdown';
 
-export type MessageType = 'notification' | 'file' | 'ask';
+export type MessageType = 'notification' | 'file' | 'ask' | 'inbound';
+
+export interface BotListenerConfig {
+  enabled?: boolean; // default true
+  allowShellCommands?: boolean; // default true (execute /sh or /exec commands)
+  autoAgent?: boolean; // forward /task to agy/AI agent
+  workspaceDir?: string; // default directory for agent and shell execution
+  systemPromptFile?: string; // custom system prompt markdown path
+  memoryFile?: string; // custom memory markdown path
+}
 
 export interface MonitorConfig {
   enabled: boolean;
@@ -49,6 +58,7 @@ export interface TelegramConfig {
   tailscaleHost?: string; // custom tailscale IP or MagicDNS override
   lanHost?: string; // custom LAN IP override
   monitor?: MonitorConfig; // optional system resource monitor
+  botListener?: BotListenerConfig; // optional continuous bot listener config
 }
 
 export interface StoredMessage {
@@ -66,6 +76,8 @@ export interface StoredMessage {
   answeredBy?: string;
   status: 'delivered' | 'answered' | 'timed_out' | 'failed';
   telegramMessageId?: number;
+  prompt?: string;
+  workspaceDir?: string;
   links?: {
     tailscale: string;
     lan: string;
@@ -85,6 +97,8 @@ export interface SendMessageOptions {
   replyToMessageId?: number;
   includeLinks?: boolean;
   inlineKeyboard?: Array<Array<{ text: string; callback_data: string }>>;
+  prompt?: string;
+  workspaceDir?: string;
 }
 
 export interface SendFileOptions {

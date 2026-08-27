@@ -6,8 +6,23 @@ import { resolveConfig, validateConfig, saveConfig, loadSavedConfig, getConfigPa
 import { runSetup } from './setup.js';
 import { runMcpServer } from './mcp.js';
 import { startServer, ensureServerRunning, stopDaemon, isServerRunning, getPidFile, getLogFile } from './server.js';
+import {
+  installSystemService,
+  getSystemServiceStatus,
+  restartSystemService,
+  stopSystemService,
+  startSystemService,
+  uninstallSystemService,
+} from './service.js';
 import { getNetworkAddresses, getMessageLinks } from './network.js';
 import { getSystemMetrics, checkAndEvaluateAlerts } from './monitor.js';
+import {
+  loadMemory,
+  appendMemory,
+  getEffectiveSystemPrompt,
+  getMemoryFilePath,
+  getSystemPromptFilePath,
+} from './memory.js';
 import type { NotificationLevel, ParseMode } from './types.js';
 
 async function readStdin(): Promise<string> {
@@ -409,6 +424,90 @@ daemonCommand
     }
   });
 
+daemonCommand
+  .command('install-service')
+  .description('Install background daemon as a systemd user service (auto-start on boot & auto-restart on failure)')
+  .action(async () => {
+    console.log(pc.cyan('→ Installing systemd user service...'));
+    const result = await installSystemService();
+    if (result.success) {
+      console.log(pc.green(`✓ ${result.message}`));
+      console.log(pc.dim('  Check status anytime with: agent-notify service status'));
+    } else {
+      console.error(pc.red(`✗ ${result.message}`));
+    }
+  });
+
+// Command: service (Systemd user service management)
+const serviceCommand = program
+  .command('service')
+  .description('Manage agent-notify systemd user service (auto-start on boot & always-on)');
+
+serviceCommand
+  .command('install')
+  .description('Install, enable on server boot, and start the systemd background service')
+  .action(async () => {
+    console.log(pc.cyan('→ Installing agent-notify systemd service...'));
+    const result = await installSystemService();
+    if (result.success) {
+      console.log(pc.green(`✓ ${result.message}`));
+      console.log(pc.dim('  The daemon and bot listener will now run 24/7 and survive reboots.'));
+    } else {
+      console.error(pc.red(`✗ ${result.message}`));
+    }
+  });
+
+serviceCommand
+  .command('status')
+  .description('Check systemd service status')
+  .action(async () => {
+    const status = await getSystemServiceStatus();
+    if (!status.installed) {
+      console.log(pc.yellow('⚠ Systemd service is NOT installed.'));
+      console.log(pc.dim('  Run `agent-notify service install` to enable always-on background service.'));
+    } else {
+      console.log(status.running ? pc.green('✓ Service is ACTIVE and running') : pc.red('✗ Service is STOPPED'));
+      console.log();
+      console.log(status.statusText);
+    }
+  });
+
+serviceCommand
+  .command('start')
+  .description('Start the systemd service')
+  .action(async () => {
+    const res = await startSystemService();
+    if (res.success) console.log(pc.green(`✓ ${res.message}`));
+    else console.error(pc.red(`✗ ${res.message}`));
+  });
+
+serviceCommand
+  .command('stop')
+  .description('Stop the systemd service')
+  .action(async () => {
+    const res = await stopSystemService();
+    if (res.success) console.log(pc.green(`✓ ${res.message}`));
+    else console.error(pc.red(`✗ ${res.message}`));
+  });
+
+serviceCommand
+  .command('restart')
+  .description('Restart the systemd service')
+  .action(async () => {
+    const res = await restartSystemService();
+    if (res.success) console.log(pc.green(`✓ ${res.message}`));
+    else console.error(pc.red(`✗ ${res.message}`));
+  });
+
+serviceCommand
+  .command('uninstall')
+  .description('Uninstall and disable the systemd service')
+  .action(async () => {
+    const res = await uninstallSystemService();
+    if (res.success) console.log(pc.green(`✓ ${res.message}`));
+    else console.error(pc.red(`✗ ${res.message}`));
+  });
+
 // Command: links
 program
   .command('links [messageId]')
@@ -472,8 +571,8 @@ configCommand
     if (config.tailscaleHost) {
       console.log(`Tailscale Host: ${pc.bold(config.tailscaleHost)}`);
     }
-    if (config.lanHost) {
-      console.log(`LAN Host:       ${pc.bold(config.lanHost)}`);
+    if (config.botListener?.workspaceDir) {
+      console.log(`Workspace Dir:  ${pc.bold(config.botListener.workspaceDir)}`);
     }
   });
 
@@ -487,6 +586,7 @@ configCommand
   .option('--links <boolean>', 'Include links in messages (true/false)')
   .option('--tailscale-host <host>', 'Custom Tailscale host override')
   .option('--lan-host <host>', 'Custom LAN host override')
+  .option('--workspace-dir <dir>', 'Default workspace directory for agent/shell execution')
   .action((options, cmd) => {
     const parentOpts = program.opts();
     const cmdOpts = cmd ? cmd.opts() : options;
@@ -502,6 +602,9 @@ configCommand
     if (cmdOpts.links !== undefined) updates.includeLinks = cmdOpts.links === 'true';
     if (cmdOpts.tailscaleHost) updates.tailscaleHost = cmdOpts.tailscaleHost;
     if (cmdOpts.lanHost) updates.lanHost = cmdOpts.lanHost;
+    if (cmdOpts.workspaceDir) {
+      updates.botListener = { workspaceDir: cmdOpts.workspaceDir };
+    }
 
     saveConfig(updates);
     console.log(pc.green(`✓ Configuration updated in ${getConfigPath()}`));
@@ -541,6 +644,59 @@ configCommand
   .description('Print configuration file path')
   .action(() => {
     console.log(getConfigPath());
+  });
+
+// Command: memory
+const memoryCommand = program
+  .command('memory')
+  .description('Manage persistent agent memory (markdown-based)');
+
+memoryCommand
+  .command('show')
+  .description('Display current persistent memory contents')
+  .action(() => {
+    const mem = loadMemory();
+    console.log(pc.cyan(`Memory file: ${getMemoryFilePath()}`));
+    console.log(pc.dim('----------------------------------------'));
+    console.log(mem);
+  });
+
+memoryCommand
+  .command('add <note...>')
+  .description('Append a persistent memory note')
+  .action((notes) => {
+    const noteStr = notes.join(' ');
+    const entry = appendMemory(noteStr);
+    console.log(pc.green(`✓ Added to memory: ${entry}`));
+  });
+
+memoryCommand
+  .command('path')
+  .description('Print memory.md file path')
+  .action(() => {
+    console.log(getMemoryFilePath());
+  });
+
+// Command: prompt
+const promptCommand = program
+  .command('prompt')
+  .description('Manage system prompt template and preview effective prompt with memory');
+
+promptCommand
+  .command('show')
+  .description('Show compiled system prompt with memory injected')
+  .action(() => {
+    const effective = getEffectiveSystemPrompt();
+    console.log(pc.cyan(`System Prompt file: ${getSystemPromptFilePath()}`));
+    console.log(pc.dim('----------------------------------------'));
+    console.log(effective);
+  });
+
+promptCommand
+  .command('path')
+  .description('Print system_prompt.md file path')
+  .action(() => {
+    console.log(getSystemPromptFilePath());
   });
 
 // Command: mcp

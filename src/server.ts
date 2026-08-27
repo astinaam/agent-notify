@@ -7,6 +7,7 @@ import { messageStore } from './store.js';
 import { getNetworkAddresses } from './network.js';
 import { resolveConfig, getConfigDir } from './config.js';
 import { getSystemMetrics, startMonitorService } from './monitor.js';
+import { startBotListener, stopBotListener } from './bot_listener.js';
 import { metricsStore } from './metrics_store.js';
 import type { NetworkAddresses } from './types.js';
 
@@ -339,6 +340,17 @@ export async function startServer(
 
   // Start background resource monitor service if enabled
   startMonitorService();
+
+  // Start continuous 24/7 Telegram bot listener if configured
+  startBotListener(config);
+
+  const shutdown = () => {
+    stopBotListener();
+    server.close();
+  };
+
+  process.once('SIGTERM', shutdown);
+  process.once('SIGINT', shutdown);
 
   return new Promise((resolve, reject) => {
     server.listen(port, host, () => {
