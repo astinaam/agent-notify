@@ -217,3 +217,9 @@ export function markdownToTelegramHtml(markdown: string): string {
 
   return text.trim();
 }
+
+export function clipPrompt(prompt: string, maxLen = 70): string {
+  const firstLine = prompt.trim().split('\n')[0].trim();
+  if (firstLine.length <= maxLen) return firstLine;
+  return firstLine.slice(0, maxLen - 3).trim() + '...';
+}

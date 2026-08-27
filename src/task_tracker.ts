@@ -1,6 +1,6 @@
 import type { ChildProcess } from 'node:child_process';
 import { getSystemMetrics } from './monitor.js';
-import { escapeHtml } from './memory.js';
+import { escapeHtml, clipPrompt } from './memory.js';
 
 export interface ActiveAgentTask {
   id: string;
@@ -185,11 +185,7 @@ export class AgentTaskManager {
 
     const metrics = getSystemMetrics();
     const activeCount = this.getActiveCount();
-
-    let snippetPrompt = task.prompt;
-    if (snippetPrompt.length > 100) {
-      snippetPrompt = snippetPrompt.slice(0, 97) + '...';
-    }
+    const snippetPrompt = clipPrompt(task.prompt, 65);
 
     let card = `${spinner} <b>${task.agentType} Agent Running...</b>\n`;
     card += `🆔 <code>${task.id}</code>${task.pid ? ` (PID: ${task.pid})` : ''}\n\n`;
@@ -216,7 +212,7 @@ export class AgentTaskManager {
     tasks.forEach((t, i) => {
       const elapsed = Math.floor((Date.now() - t.startedAt) / 1000);
       const elapsedStr = elapsed >= 60 ? `${Math.floor(elapsed / 60)}m ${elapsed % 60}s` : `${elapsed}s`;
-      let snippet = t.prompt.length > 70 ? t.prompt.slice(0, 67) + '...' : t.prompt;
+      const snippet = clipPrompt(t.prompt, 65);
 
       text += `<b>${i + 1}. [${t.agentType}]</b> <code>${t.id}</code>${t.pid ? ` (PID: ${t.pid})` : ''}\n`;
       text += `   📝 <i>"${escapeHtml(snippet)}"</i>\n`;

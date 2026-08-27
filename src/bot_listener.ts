@@ -17,6 +17,7 @@ import {
   getSystemPromptFilePath,
   markdownToTelegramHtml,
   escapeHtml,
+  clipPrompt,
 } from './memory.js';
 import { taskManager } from './task_tracker.js';
 import type { TelegramConfig, StoredMessage } from './types.js';
@@ -822,6 +823,7 @@ Here are the commands you can use anytime:
       prompt: displayPrompt,
       workspaceDir: executionCwd,
       sessionId,
+      telegramMessageId: sent.message_id,
       status: 'delivered',
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -871,12 +873,36 @@ Here are the commands you can use anytime:
 
         if (wasCancelled) return;
 
-        if (code === 0) {
-          let summary = resultOut.trim() || 'Goal achieved successfully.';
-          if (summary.length > 3500) summary = summary.slice(-3500);
-          const formatted = markdownToTelegramHtml(summary);
-          await this.client.sendMessage({
-            text: `✅ <b>Cursor Task Completed!</b> (⏱️ ${timeStr})\n\n${formatted}`,
+        const clipped = clipPrompt(displayPrompt, 65);
+        let summary = resultOut.trim() || 'Goal achieved successfully.';
+        if (summary.length > 3400) summary = summary.slice(-3400);
+        const formatted = markdownToTelegramHtml(summary);
+
+        const header = code === 0
+          ? `✅ <b>Cursor Task Completed!</b> (⏱️ ${timeStr})\n📝 <i>"${escapeHtml(clipped)}"</i>\n\n`
+          : `⚠️ <b>Cursor Task Ended (Exit code ${code})</b> (⏱️ ${timeStr})\n📝 <i>"${escapeHtml(clipped)}"</i>\n\n`;
+
+        const finalText = header + formatted;
+
+        // Update the live status message in-place
+        let editSucceeded = false;
+        if (task.statusMessageId) {
+          try {
+            await this.client.editMessageText(
+              task.statusMessageId,
+              finalText,
+              'HTML',
+              { inline_keyboard: [] }
+            );
+            editSucceeded = true;
+          } catch (err: any) {
+            console.warn('[BotListener] In-place edit failed, falling back to sendMessage:', err.message);
+          }
+        }
+
+        if (!editSucceeded) {
+          const completionSent = await this.client.sendMessage({
+            text: finalText,
             agent: 'CursorAgent',
             parseMode: 'HTML',
             replyToMessageId,
@@ -885,19 +911,16 @@ Here are the commands you can use anytime:
             workspaceDir: executionCwd,
             sessionId,
           });
+          messageStore.updateMessage(taskRecord.id, {
+            content: summary,
+            status: code === 0 ? 'delivered' : 'failed',
+            telegramMessageId: completionSent.message_id,
+          });
         } else {
-          let errSummary = resultOut.trim() || `Process exited with code ${code}`;
-          if (errSummary.length > 2500) errSummary = errSummary.slice(-2500);
-          const formatted = markdownToTelegramHtml(errSummary);
-          await this.client.sendMessage({
-            text: `⚠️ <b>Cursor Task Ended (Exit code ${code})</b> (⏱️ ${timeStr})\n\n${formatted}`,
-            agent: 'CursorAgent',
-            parseMode: 'HTML',
-            replyToMessageId,
-            includeLinks: false,
-            prompt: displayPrompt,
-            workspaceDir: executionCwd,
-            sessionId,
+          messageStore.updateMessage(taskRecord.id, {
+            content: summary,
+            status: code === 0 ? 'delivered' : 'failed',
+            telegramMessageId: task.statusMessageId,
           });
         }
       });
@@ -972,6 +995,7 @@ Here are the commands you can use anytime:
       content: `Dispatched task from ${user}: ${displayPrompt}`,
       prompt: displayPrompt,
       workspaceDir: executionCwd,
+      telegramMessageId: sent.message_id,
       status: 'delivered',
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -1017,12 +1041,36 @@ Here are the commands you can use anytime:
 
           if (wasCancelled) return;
 
-          if (code === 0) {
-            let summary = resultOut.trim() || 'Goal achieved successfully.';
-            if (summary.length > 3500) summary = summary.slice(-3500);
-            const formatted = markdownToTelegramHtml(summary);
-            await this.client.sendMessage({
-              text: `✅ <b>Antigravity Task Completed!</b> (⏱️ ${timeStr})\n\n${formatted}`,
+          const clipped = clipPrompt(displayPrompt, 65);
+          let summary = resultOut.trim() || 'Goal achieved successfully.';
+          if (summary.length > 3400) summary = summary.slice(-3400);
+          const formatted = markdownToTelegramHtml(summary);
+
+          const header = code === 0
+            ? `✅ <b>Antigravity Task Completed!</b> (⏱️ ${timeStr})\n📝 <i>"${escapeHtml(clipped)}"</i>\n\n`
+            : `⚠️ <b>Antigravity Task Ended (Exit code ${code})</b> (⏱️ ${timeStr})\n📝 <i>"${escapeHtml(clipped)}"</i>\n\n`;
+
+          const finalText = header + formatted;
+
+          // Update the live status message in-place
+          let editSucceeded = false;
+          if (task.statusMessageId) {
+            try {
+              await this.client.editMessageText(
+                task.statusMessageId,
+                finalText,
+                'HTML',
+                { inline_keyboard: [] }
+              );
+              editSucceeded = true;
+            } catch (err: any) {
+              console.warn('[BotListener] In-place edit failed, falling back to sendMessage:', err.message);
+            }
+          }
+
+          if (!editSucceeded) {
+            const completionSent = await this.client.sendMessage({
+              text: finalText,
               agent: 'Antigravity',
               parseMode: 'HTML',
               replyToMessageId,
@@ -1030,18 +1078,16 @@ Here are the commands you can use anytime:
               prompt: displayPrompt,
               workspaceDir: executionCwd,
             });
+            messageStore.updateMessage(taskRecord.id, {
+              content: summary,
+              status: code === 0 ? 'delivered' : 'failed',
+              telegramMessageId: completionSent.message_id,
+            });
           } else {
-            let errSummary = resultOut.trim() || `Process exited with code ${code}`;
-            if (errSummary.length > 2500) errSummary = errSummary.slice(-2500);
-            const formatted = markdownToTelegramHtml(errSummary);
-            await this.client.sendMessage({
-              text: `⚠️ <b>Antigravity Task Ended (Exit code ${code})</b> (⏱️ ${timeStr})\n\n${formatted}`,
-              agent: 'Antigravity',
-              parseMode: 'HTML',
-              replyToMessageId,
-              includeLinks: false,
-              prompt: displayPrompt,
-              workspaceDir: executionCwd,
+            messageStore.updateMessage(taskRecord.id, {
+              content: summary,
+              status: code === 0 ? 'delivered' : 'failed',
+              telegramMessageId: task.statusMessageId,
             });
           }
         });
