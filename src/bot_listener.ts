@@ -27,6 +27,7 @@ export interface AgentTaskOptions {
   workspaceDir?: string;
   originalPrompt?: string;
   isThreadFollowUp?: boolean;
+  sessionId?: string;
 }
 
 export class BotListener {
@@ -297,22 +298,26 @@ export class BotListener {
         const parentPrompt = parentMsg?.prompt || '';
         const parentAgent = parentMsg?.agent || (msg.reply_to_message.text?.includes('Cursor') ? 'CursorAgent' : 'Antigravity');
         const parentWorkspace = parentMsg?.workspaceDir || this.config.botListener?.workspaceDir || process.cwd();
+        const parentSessionId = parentMsg?.sessionId;
 
-        const threadPrompt = `[CONVERSATION THREAD FOLLOW-UP]
+        if (parentAgent.toLowerCase().includes('cursor')) {
+          // Native Cursor CLI session resume
+          await this.handleCursorTask(text, fromUser, msg.message_id, {
+            workspaceDir: parentWorkspace,
+            originalPrompt: text,
+            isThreadFollowUp: true,
+            sessionId: parentSessionId,
+          });
+        } else {
+          // Antigravity conversation continuation
+          const threadPrompt = `[CONVERSATION THREAD FOLLOW-UP]
 Prior User Request: "${parentPrompt || 'Previous task'}"
 Prior Agent Response:
-${parentText.slice(0, 2500)}
+${parentText.slice(0, 2000)}
 
 [USER FOLLOW-UP IN THIS THREAD]:
 ${text}`;
 
-        if (parentAgent.toLowerCase().includes('cursor')) {
-          await this.handleCursorTask(threadPrompt, fromUser, msg.message_id, {
-            workspaceDir: parentWorkspace,
-            originalPrompt: text,
-            isThreadFollowUp: true,
-          });
-        } else {
           await this.handleAgyTask(threadPrompt, fromUser, msg.message_id, {
             workspaceDir: parentWorkspace,
             originalPrompt: text,
@@ -422,15 +427,18 @@ ${text}`;
             await this.sendReply('Usage: <code>/cursor &lt;prompt&gt;</code> (e.g. <code>/cursor fix type error in src/index.ts</code>)', msg.message_id);
             return;
           }
-          let promptToRun = args;
+          let parentSessionId: string | undefined;
           if (msg.reply_to_message) {
             const repliedTelegramId = msg.reply_to_message.message_id;
             const { items } = messageStore.getMessages({ limit: 100 });
             const parentMsg = items.find((m) => m.telegramMessageId === repliedTelegramId);
-            const parentText = parentMsg?.content || msg.reply_to_message.text || '';
-            promptToRun = `[THREAD CONTEXT]\nPrior Request: "${parentMsg?.prompt || ''}"\nPrior Output:\n${parentText.slice(0, 2000)}\n\n[USER REQUEST]:\n${args}`;
+            parentSessionId = parentMsg?.sessionId;
           }
-          await this.handleCursorTask(promptToRun, fromUser, msg.message_id, { originalPrompt: args });
+          await this.handleCursorTask(args, fromUser, msg.message_id, {
+            originalPrompt: args,
+            sessionId: parentSessionId,
+            isThreadFollowUp: Boolean(parentSessionId),
+          });
           break;
         }
 
@@ -442,14 +450,19 @@ ${text}`;
             return;
           }
           let promptToRun = args;
+          let isFollowUp = false;
           if (msg.reply_to_message) {
+            isFollowUp = true;
             const repliedTelegramId = msg.reply_to_message.message_id;
             const { items } = messageStore.getMessages({ limit: 100 });
             const parentMsg = items.find((m) => m.telegramMessageId === repliedTelegramId);
             const parentText = parentMsg?.content || msg.reply_to_message.text || '';
             promptToRun = `[THREAD CONTEXT]\nPrior Request: "${parentMsg?.prompt || ''}"\nPrior Output:\n${parentText.slice(0, 2000)}\n\n[USER REQUEST]:\n${args}`;
           }
-          await this.handleAgyTask(promptToRun, fromUser, msg.message_id, { originalPrompt: args });
+          await this.handleAgyTask(promptToRun, fromUser, msg.message_id, {
+            originalPrompt: args,
+            isThreadFollowUp: isFollowUp,
+          });
           break;
         }
 
@@ -545,8 +558,8 @@ Here are the commands you can use anytime:
 • <code>/cancel [id]</code> — Stop / cancel a running agent
 • <code>/dir [path]</code> — View or switch workspace directory (Current: <code>${escapeHtml(cwd)}</code>)
 
-💬 <b>Multi-Turn Threading:</b>
-• <i>Reply directly to ANY bot message in Telegram to follow up in that exact agent conversation thread!</i>
+💬 <b>Multi-Turn Native Threading:</b>
+• <i>Reply directly to ANY bot message in Telegram to natively resume that agent session!</i>
 
 💾 <b>Memory & System Prompt:</b>
 • <code>/memory</code> — View persistent memory
@@ -737,6 +750,18 @@ Here are the commands you can use anytime:
     const executionCwd = options?.workspaceDir || this.config.botListener?.workspaceDir || process.cwd();
     const displayPrompt = options?.originalPrompt || prompt;
 
+    // Allocate / retrieve session ID for native conversation resumption
+    let sessionId = options?.sessionId;
+    if (!sessionId) {
+      try {
+        const { stdout: chatOut } = await execAsync('agent create-chat 2>/dev/null || echo ""');
+        const trimmed = chatOut.trim();
+        if (trimmed && /^[a-zA-Z0-9_-]+$/.test(trimmed)) {
+          sessionId = trimmed;
+        }
+      } catch {}
+    }
+
     // Register active task
     const task = taskManager.registerTask({
       agentType: 'Cursor',
@@ -761,6 +786,7 @@ Here are the commands you can use anytime:
       inlineKeyboard: cancelKeyboard,
       replyToMessageId,
       includeLinks: false,
+      sessionId,
     });
 
     taskManager.setStatusMessageId(task.id, sent.message_id);
@@ -777,12 +803,14 @@ Here are the commands you can use anytime:
       }
     });
 
-    // Build prompt with plugged memory & system instructions
-    const augmentedPrompt = buildAgentPrompt(prompt, {
-      workspaceDir: executionCwd,
-      customPromptPath: this.config.botListener?.systemPromptFile,
-      customMemoryPath: this.config.botListener?.memoryFile,
-    });
+    // Build prompt with plugged memory & system instructions (only on turn 1 if resuming)
+    const augmentedPrompt = options?.isThreadFollowUp
+      ? prompt
+      : buildAgentPrompt(prompt, {
+          workspaceDir: executionCwd,
+          customPromptPath: this.config.botListener?.systemPromptFile,
+          customMemoryPath: this.config.botListener?.memoryFile,
+        });
 
     // Record task in store
     const taskRecord: StoredMessage = {
@@ -793,6 +821,7 @@ Here are the commands you can use anytime:
       content: `Dispatched Cursor task from ${user}: ${displayPrompt}`,
       prompt: displayPrompt,
       workspaceDir: executionCwd,
+      sessionId,
       status: 'delivered',
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -809,8 +838,8 @@ Here are the commands you can use anytime:
         return;
       }
 
-      const args = agentBin.endsWith('/cursor')
-        ? ['agent', '-p', '--trust', '-f', augmentedPrompt]
+      const args = sessionId
+        ? ['-p', '--resume', sessionId, '--trust', '-f', augmentedPrompt]
         : ['-p', '--trust', '-f', augmentedPrompt];
 
       const child = spawn(agentBin, args, {
@@ -854,6 +883,7 @@ Here are the commands you can use anytime:
             includeLinks: false,
             prompt: displayPrompt,
             workspaceDir: executionCwd,
+            sessionId,
           });
         } else {
           let errSummary = resultOut.trim() || `Process exited with code ${code}`;
@@ -867,6 +897,7 @@ Here are the commands you can use anytime:
             includeLinks: false,
             prompt: displayPrompt,
             workspaceDir: executionCwd,
+            sessionId,
           });
         }
       });
@@ -953,8 +984,11 @@ Here are the commands you can use anytime:
       const agyPath = whichOut.trim();
 
       if (agyPath) {
-        // Run agy asynchronously in background and notify on completion
-        const child = spawn(agyPath, ['--dangerously-skip-permissions', '-p', augmentedPrompt], {
+        const agyArgs = options?.isThreadFollowUp
+          ? ['--continue', '--dangerously-skip-permissions', '-p', augmentedPrompt]
+          : ['--dangerously-skip-permissions', '-p', augmentedPrompt];
+
+        const child = spawn(agyPath, agyArgs, {
           stdio: 'pipe',
           cwd: executionCwd,
         });

@@ -101,6 +101,7 @@ export class TelegramClient {
       status: 'delivered',
       prompt: options.prompt,
       workspaceDir: options.workspaceDir,
+      sessionId: options.sessionId,
       links,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),

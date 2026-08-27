@@ -78,6 +78,7 @@ export interface StoredMessage {
   telegramMessageId?: number;
   prompt?: string;
   workspaceDir?: string;
+  sessionId?: string;
   links?: {
     tailscale: string;
     lan: string;
@@ -99,6 +100,7 @@ export interface SendMessageOptions {
   inlineKeyboard?: Array<Array<{ text: string; callback_data: string }>>;
   prompt?: string;
   workspaceDir?: string;
+  sessionId?: string;
 }
 
 export interface SendFileOptions {
