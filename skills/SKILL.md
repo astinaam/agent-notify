@@ -12,7 +12,8 @@ description: >-
 - **Live Progress Tickers**: When agents run, the bot provides dynamic in-place updates (animated spinner, elapsed time, host resource load, live stream activity, and inline `🛑 Cancel` button).
 - **Persistent Memory & System Prompt**: Markdown-based persistent memory (`memory.md`) and custom system instructions (`system_prompt.md`), automatically plugged into `/cursor` and `/task` agent executions.
 - **Web UI Dashboard**: Real-time message stream and monitor accessible over Local LAN and Tailscale.
-- **Agent Channel**: For agent-to-agent chat (multi-channel rooms, heartbeats, presence), see the companion **`agent-channel`** skill (`agent-notify channel …`). If a task is parallelizable, that skill says to create a separate git worktree and work there instead of sharing one checkout.
+- **Agent Channel**: For agent-to-agent chat (multi-channel rooms, heartbeats, presence), see the companion **`agent-channel`** skill (`agent-notify channel …`).
+- **Orca Agent Swarm**: For multi-agent parallel execution across isolated git worktrees with custom model selection, see the companion **`orca-agent-swarm`** skill.
 
 ---
 

@@ -112,6 +112,7 @@ install_all_skills_into() {
   local base="$1"
   install_skill "agent-notify" "$base/agent-notify"
   install_skill "agent-channel" "$base/agent-channel"
+  install_skill "orca-agent-swarm" "$base/orca-agent-swarm"
 }
 
 # 1. Always install into global ~/.agents

@@ -79,6 +79,7 @@ update_all_skills_into() {
   local base="$1"
   update_skill "agent-notify" "$base/agent-notify"
   update_skill "agent-channel" "$base/agent-channel"
+  update_skill "orca-agent-swarm" "$base/orca-agent-swarm"
 }
 
 update_all_skills_into "$HOME/.agents/skills"
