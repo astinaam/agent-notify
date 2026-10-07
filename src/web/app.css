@@ -79,13 +79,44 @@ body {
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   min-height: 100vh;
+  min-height: 100dvh;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .app-container {
   display: flex;
   flex-direction: column;
   height: 100vh;
+  height: 100dvh;
   overflow: hidden;
+  padding-top: env(safe-area-inset-top);
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+}
+
+.mobile-only {
+  display: none !important;
+}
+
+.mobile-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.55);
+  z-index: 40;
+  backdrop-filter: blur(2px);
+}
+
+.mobile-overlay[hidden] {
+  display: none !important;
+}
+
+body.drawer-open {
+  overflow: hidden;
+}
+
+body.drawer-open .mobile-overlay {
+  display: block;
 }
 
 /* Header */
@@ -1339,6 +1370,19 @@ body {
   color: var(--text-muted);
 }
 
+.channel-roster-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.channel-chat-title-wrap {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-width: 0;
+}
+
 .channel-status-pill {
   margin: 0 12px 10px;
   padding: 6px 10px;
@@ -1535,35 +1579,360 @@ body {
     grid-template-columns: 1fr;
   }
 
-  .channel-layout {
-    flex-direction: column;
-  }
-
-  .channel-roster {
-    width: 100%;
-    max-height: 180px;
-    border-right: none;
-    border-bottom: 1px solid var(--border-color);
+  .metric-cards-grid {
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
   }
 }
 
 @media (max-width: 768px) {
-  .app-layout {
-    flex-direction: column;
+  .mobile-only {
+    display: inline-flex !important;
   }
-  .sidebar {
-    width: 100%;
-    max-height: 220px;
-    border-right: none;
-    border-bottom: 1px solid var(--border-color);
+
+  .app-header {
+    flex-wrap: wrap;
+    padding: 8px 12px;
+    gap: 8px 10px;
+    row-gap: 8px;
   }
+
+  .header-left {
+    flex: 1 1 auto;
+    min-width: 0;
+    gap: 8px;
+  }
+
+  .brand-name,
+  .version-badge,
+  .status-label,
+  .tab-label,
+  .range-label,
+  .btn-label {
+    display: none;
+  }
+
+  .view-tabs {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .view-tab {
+    flex: 1;
+    justify-content: center;
+    min-height: 40px;
+    padding: 8px 10px;
+    font-size: 1rem;
+  }
+
+  .live-status {
+    padding: 6px;
+  }
+
+  .header-center {
+    order: 3;
+    flex: 1 1 100%;
+    max-width: none;
+  }
+
+  .search-bar input {
+    min-height: 40px;
+    font-size: 16px; /* avoid iOS zoom on focus */
+  }
+
+  .header-right {
+    gap: 8px;
+  }
+
   .network-chips {
     display: none;
   }
+
+  .btn-icon {
+    width: 40px;
+    height: 40px;
+  }
+
+  .app-layout {
+    position: relative;
+    min-height: 0;
+  }
+
+  .sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: min(320px, 88vw);
+    max-height: none;
+    z-index: 50;
+    border-right: 1px solid var(--border-color);
+    border-bottom: none;
+    padding-top: calc(12px + env(safe-area-inset-top));
+    padding-bottom: env(safe-area-inset-bottom);
+    transform: translateX(-105%);
+    transition: transform 0.2s ease;
+    box-shadow: var(--shadow-lg);
+  }
+
+  .sidebar.mobile-open {
+    transform: translateX(0);
+  }
+
+  .feed-header {
+    padding: 10px 12px;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .feed-filters-summary {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    min-width: 0;
+  }
+
   .feed-container {
     padding: 12px;
   }
+
+  .btn-sm {
+    min-height: 40px;
+    padding: 8px 12px;
+  }
+
+  .nav-item {
+    min-height: 44px;
+  }
+
   .metrics-dashboard {
     padding: 12px;
+    gap: 14px;
+  }
+
+  .metrics-top-bar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .metrics-range-controls {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .btn-group {
+    flex: 1;
+    min-width: 0;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .btn-range {
+    flex: 1;
+    min-height: 40px;
+    padding: 8px 10px;
+    white-space: nowrap;
+  }
+
+  .metric-cards-grid {
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+
+  .metric-card {
+    padding: 14px;
+  }
+
+  .metric-card-value {
+    font-size: 1.45rem;
+  }
+
+  .metric-card-sub {
+    font-size: 0.72rem;
+    word-break: break-word;
+  }
+
+  .chart-box {
+    padding: 14px;
+    gap: 10px;
+  }
+
+  .chart-box-header {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .chart-legend {
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .chart-svg-wrap {
+    height: 180px;
+    touch-action: pan-y;
+  }
+
+  .msg-card {
+    scroll-margin-top: 100px;
+  }
+
+  .msg-header {
+    padding: 10px 14px;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .msg-header-left {
+    gap: 6px;
+  }
+
+  .msg-body {
+    padding: 14px;
+  }
+
+  .msg-content {
+    font-size: 0.9rem;
+  }
+
+  .msg-content pre {
+    max-width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    padding: 10px 12px;
+    font-size: 0.8rem;
+  }
+
+  .btn-ask-option {
+    min-height: 44px;
+    padding: 10px 14px;
+    font-size: 0.9rem;
+  }
+
+  .custom-reply-box {
+    flex-wrap: wrap;
+  }
+
+  .input-custom-reply {
+    min-height: 44px;
+    font-size: 16px;
+  }
+
+  .btn-send-reply {
+    min-height: 44px;
+    padding: 0 16px;
+    font-size: 0.85rem;
+  }
+
+  .attachment-card {
+    padding: 10px 12px;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .btn-download {
+    min-height: 40px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 8px 12px;
+  }
+
+  .msg-footer {
+    padding: 10px 14px;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .actions-left {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .btn-action {
+    min-height: 40px;
+    padding: 8px 12px;
+    font-size: 0.8rem;
+  }
+
+  .msg-id-tag {
+    font-size: 0.675rem;
+  }
+
+  .channel-layout {
+    position: relative;
+  }
+
+  .channel-roster {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: min(320px, 88vw);
+    max-height: none;
+    z-index: 50;
+    border-right: 1px solid var(--border-color);
+    border-bottom: none;
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+    transform: translateX(-105%);
+    transition: transform 0.2s ease;
+    box-shadow: var(--shadow-lg);
+  }
+
+  .channel-roster.mobile-open {
+    transform: translateX(0);
+  }
+
+  .channel-chat-header {
+    padding: 10px 12px;
+    align-items: center;
+  }
+
+  .channel-chat-sub {
+    display: none;
+  }
+
+  .channel-messages {
+    padding: 12px;
+  }
+
+  .channel-bubble {
+    max-width: 94%;
+  }
+
+  .channel-compose {
+    padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
+    position: sticky;
+    bottom: 0;
+    background: var(--bg-primary);
+  }
+
+  .channel-compose input {
+    min-height: 44px;
+    font-size: 16px; /* avoid iOS zoom on focus */
+  }
+
+  .channel-compose .btn-sm {
+    min-width: 64px;
+  }
+
+  .channel-agent-card {
+    min-height: 44px;
+  }
+
+  .toast-container {
+    left: 12px;
+    right: 12px;
+    bottom: calc(12px + env(safe-area-inset-bottom));
+  }
+}
+
+@media (max-width: 420px) {
+  .metric-cards-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .brand-icon {
+    font-size: 1.2rem;
   }
 }

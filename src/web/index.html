@@ -2,7 +2,8 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#0f172a">
   <title>agent-notify — AI Messages & System Dashboard</title>
   <link rel="stylesheet" href="/app.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -21,15 +22,18 @@
         </div>
 
         <!-- View Navigation Tabs -->
-        <nav class="view-tabs">
-          <button class="view-tab active" id="tabMessages" data-view="messages">
-            <span>💬</span> Messages
+        <nav class="view-tabs" aria-label="Primary views">
+          <button class="view-tab active" id="tabMessages" data-view="messages" aria-label="Messages">
+            <span class="tab-icon" aria-hidden="true">💬</span>
+            <span class="tab-label">Messages</span>
           </button>
-          <button class="view-tab" id="tabChannel" data-view="channel">
-            <span>📡</span> Channel
+          <button class="view-tab" id="tabChannel" data-view="channel" aria-label="Channel">
+            <span class="tab-icon" aria-hidden="true">📡</span>
+            <span class="tab-label">Channel</span>
           </button>
-          <button class="view-tab" id="tabSystem" data-view="system">
-            <span>📊</span> System Metrics
+          <button class="view-tab" id="tabSystem" data-view="system" aria-label="System Metrics">
+            <span class="tab-icon" aria-hidden="true">📊</span>
+            <span class="tab-label">System</span>
           </button>
         </nav>
 
@@ -65,10 +69,13 @@
       </div>
     </header>
 
+    <!-- Mobile drawer overlay -->
+    <div class="mobile-overlay" id="mobileOverlay" hidden></div>
+
     <!-- Main Layout -->
     <div class="app-layout">
       <!-- Sidebar (for Messages view) -->
-      <aside class="sidebar" id="sidebar">
+      <aside class="sidebar" id="sidebar" aria-label="Message filters">
         <!-- Agents Group -->
         <div class="sidebar-section">
           <div class="section-title">
@@ -164,11 +171,14 @@
           <!-- Feed Controls Bar -->
           <div class="feed-header">
             <div class="feed-filters-summary" id="filtersSummary">
+              <button type="button" class="btn-sm mobile-only" id="filtersToggleBtn" aria-expanded="false" aria-controls="sidebar" title="Open filters">
+                ☰ Filters
+              </button>
               <span>Showing <strong id="activeFilterLabel">all messages</strong></span>
             </div>
             <div class="feed-actions">
               <button id="refreshBtn" class="btn-sm" title="Refresh messages">
-                🔄 Refresh
+                <span aria-hidden="true">🔄</span><span class="btn-label"> Refresh</span>
               </button>
               <button id="clearFiltersBtn" class="btn-sm btn-ghost" style="display: none;">
                 Reset Filters
@@ -334,10 +344,13 @@
         <!-- VIEW 3: AGENT CHANNEL -->
         <div id="channelView" class="view-panel channel-view" style="display: none;">
           <div class="channel-layout">
-            <aside class="channel-roster" id="channelRoster">
+            <aside class="channel-roster" id="channelRoster" aria-label="Channel agents">
               <div class="channel-roster-header">
                 <span>Agents</span>
-                <span class="section-badge" id="channelAgentCount">0</span>
+                <div class="channel-roster-header-actions">
+                  <span class="section-badge" id="channelAgentCount">0</span>
+                  <button type="button" class="btn-icon mobile-only" id="channelRosterCloseBtn" aria-label="Close agents list" title="Close">✕</button>
+                </div>
               </div>
               <div class="channel-status-pill" id="channelStatusPill">No channel</div>
               <div class="channel-agent-list" id="channelAgentList">
@@ -346,9 +359,14 @@
             </aside>
             <section class="channel-chat">
               <div class="channel-chat-header">
-                <div>
-                  <strong>Agent Channel</strong>
-                  <span class="channel-chat-sub" id="channelChatSub">Shared room + DMs (all relayed to Telegram)</span>
+                <div class="channel-chat-title-wrap">
+                  <button type="button" class="btn-sm mobile-only" id="channelRosterToggleBtn" aria-expanded="false" aria-controls="channelRoster" title="Show agents">
+                    👥 Agents
+                  </button>
+                  <div>
+                    <strong>Agent Channel</strong>
+                    <span class="channel-chat-sub" id="channelChatSub">Shared room + DMs (all relayed to Telegram)</span>
+                  </div>
                 </div>
                 <button id="channelRefreshBtn" class="btn-sm" title="Refresh channel">🔄</button>
               </div>

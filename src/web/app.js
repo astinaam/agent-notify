@@ -44,6 +44,11 @@ const dom = {
   channelComposeForm: document.getElementById('channelComposeForm'),
   channelComposeInput: document.getElementById('channelComposeInput'),
   channelComposeBtn: document.getElementById('channelComposeBtn'),
+  channelRoster: document.getElementById('channelRoster'),
+  channelRosterToggleBtn: document.getElementById('channelRosterToggleBtn'),
+  channelRosterCloseBtn: document.getElementById('channelRosterCloseBtn'),
+  filtersToggleBtn: document.getElementById('filtersToggleBtn'),
+  mobileOverlay: document.getElementById('mobileOverlay'),
   themeToggle: document.getElementById('themeToggle'),
   themeIcon: document.getElementById('themeIcon'),
   feedContainer: document.getElementById('feedContainer'),
@@ -110,9 +115,37 @@ function initTheme() {
   }
 }
 
+function closeMobileDrawers() {
+  document.body.classList.remove('drawer-open');
+  if (dom.sidebar) dom.sidebar.classList.remove('mobile-open');
+  if (dom.channelRoster) dom.channelRoster.classList.remove('mobile-open');
+  if (dom.filtersToggleBtn) dom.filtersToggleBtn.setAttribute('aria-expanded', 'false');
+  if (dom.channelRosterToggleBtn) dom.channelRosterToggleBtn.setAttribute('aria-expanded', 'false');
+  if (dom.mobileOverlay) dom.mobileOverlay.hidden = true;
+}
+
+function openFiltersDrawer() {
+  if (!dom.sidebar || state.activeView !== 'messages') return;
+  closeMobileDrawers();
+  dom.sidebar.classList.add('mobile-open');
+  document.body.classList.add('drawer-open');
+  if (dom.mobileOverlay) dom.mobileOverlay.hidden = false;
+  if (dom.filtersToggleBtn) dom.filtersToggleBtn.setAttribute('aria-expanded', 'true');
+}
+
+function openChannelRosterDrawer() {
+  if (!dom.channelRoster || state.activeView !== 'channel') return;
+  closeMobileDrawers();
+  dom.channelRoster.classList.add('mobile-open');
+  document.body.classList.add('drawer-open');
+  if (dom.mobileOverlay) dom.mobileOverlay.hidden = false;
+  if (dom.channelRosterToggleBtn) dom.channelRosterToggleBtn.setAttribute('aria-expanded', 'true');
+}
+
 // Switch View (Messages / Channel / System)
 function switchView(viewName) {
   state.activeView = viewName;
+  closeMobileDrawers();
 
   dom.tabMessages.classList.toggle('active', viewName === 'messages');
   if (dom.tabChannel) dom.tabChannel.classList.toggle('active', viewName === 'channel');
@@ -420,33 +453,70 @@ function renderSvgChart(container, points, field, unit, strokeColor, fillColor, 
 
   container.innerHTML = svgHtml;
 
-  // Tooltip interaction
+  // Tooltip interaction & touch scrubbing
   const tooltip = container.querySelector('.chart-tooltip');
   const pointsElements = container.querySelectorAll('.chart-point');
 
+  function showTooltip(pt) {
+    if (!pt || !tooltip) return;
+    const rect = container.getBoundingClientRect();
+    const scaleX = rect.width / width;
+    const scaleY = rect.height / height;
+
+    tooltip.innerHTML = `
+      <div class="tooltip-val">${pt.val}${unit}</div>
+      <div class="tooltip-time">${formatFullTime(new Date(pt.t).toISOString())}</div>
+    `;
+    const rawX = pt.x * scaleX;
+    const rawY = pt.y * scaleY;
+    // Clamp tooltip within container so it never overflows offscreen on phones
+    const clampedX = Math.max(50, Math.min(rect.width - 50, rawX));
+    tooltip.style.left = `${clampedX}px`;
+    tooltip.style.top = `${Math.max(28, rawY)}px`;
+    tooltip.style.display = 'block';
+  }
+
+  function hideTooltip() {
+    if (tooltip) tooltip.style.display = 'none';
+  }
+
   pointsElements.forEach((ptEl) => {
-    ptEl.addEventListener('mouseenter', (e) => {
+    ptEl.addEventListener('mouseenter', () => {
       const idx = Number.parseInt(ptEl.getAttribute('data-idx'), 10);
-      const pt = coords[idx];
-      if (!pt || !tooltip) return;
-
-      const rect = container.getBoundingClientRect();
-      const scaleX = rect.width / width;
-      const scaleY = rect.height / height;
-
-      tooltip.innerHTML = `
-        <div class="tooltip-val">${pt.val}${unit}</div>
-        <div class="tooltip-time">${formatFullTime(new Date(pt.t).toISOString())}</div>
-      `;
-      tooltip.style.left = `${pt.x * scaleX}px`;
-      tooltip.style.top = `${pt.y * scaleY}px`;
-      tooltip.style.display = 'block';
+      showTooltip(coords[idx]);
     });
 
-    ptEl.addEventListener('mouseleave', () => {
-      if (tooltip) tooltip.style.display = 'none';
-    });
+    ptEl.addEventListener('mouseleave', hideTooltip);
   });
+
+  // Mobile Touch Scrubbing
+  let touchTimer = null;
+  const handleTouch = (e) => {
+    if (!coords || coords.length === 0) return;
+    const touch = e.touches ? e.touches[0] : e;
+    if (!touch) return;
+    const rect = container.getBoundingClientRect();
+    const touchX = touch.clientX - rect.left;
+    const relX = (touchX / rect.width) * width;
+
+    let closest = coords[0];
+    let minDiff = Math.abs(coords[0].x - relX);
+    for (let i = 1; i < coords.length; i++) {
+      const diff = Math.abs(coords[i].x - relX);
+      if (diff < minDiff) {
+        minDiff = diff;
+        closest = coords[i];
+      }
+    }
+    if (closest) {
+      showTooltip(closest);
+      if (touchTimer) clearTimeout(touchTimer);
+      touchTimer = setTimeout(hideTooltip, 2800);
+    }
+  };
+
+  container.addEventListener('touchstart', handleTouch, { passive: true });
+  container.addEventListener('touchmove', handleTouch, { passive: true });
 }
 
 function formatChartTime(ts, range) {
@@ -977,6 +1047,32 @@ function initEventListeners() {
   if (dom.tabChannel) dom.tabChannel.addEventListener('click', () => switchView('channel'));
   dom.tabSystem.addEventListener('click', () => switchView('system'));
 
+  if (dom.filtersToggleBtn) {
+    dom.filtersToggleBtn.addEventListener('click', () => {
+      if (dom.sidebar?.classList.contains('mobile-open')) closeMobileDrawers();
+      else openFiltersDrawer();
+    });
+  }
+
+  if (dom.channelRosterToggleBtn) {
+    dom.channelRosterToggleBtn.addEventListener('click', () => {
+      if (dom.channelRoster?.classList.contains('mobile-open')) closeMobileDrawers();
+      else openChannelRosterDrawer();
+    });
+  }
+
+  if (dom.channelRosterCloseBtn) {
+    dom.channelRosterCloseBtn.addEventListener('click', () => closeMobileDrawers());
+  }
+
+  if (dom.mobileOverlay) {
+    dom.mobileOverlay.addEventListener('click', () => closeMobileDrawers());
+  }
+
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeMobileDrawers();
+  });
+
   if (dom.channelRefreshBtn) {
     dom.channelRefreshBtn.addEventListener('click', () => fetchChannel());
   }
@@ -987,6 +1083,7 @@ function initEventListeners() {
       if (!card) return;
       state.channel.filterAgent = card.getAttribute('data-agent') || '';
       renderChannel();
+      if (window.matchMedia('(max-width: 768px)').matches) closeMobileDrawers();
     });
   }
 
@@ -1061,6 +1158,7 @@ function initEventListeners() {
       item.classList.add('active');
       state.activeFilter.level = item.getAttribute('data-filter-level') || '';
       fetchMessages();
+      if (window.matchMedia('(max-width: 768px)').matches) closeMobileDrawers();
     });
   });
 
@@ -1071,6 +1169,7 @@ function initEventListeners() {
       item.classList.add('active');
       state.activeFilter.type = item.getAttribute('data-filter-type') || '';
       fetchMessages();
+      if (window.matchMedia('(max-width: 768px)').matches) closeMobileDrawers();
     });
   });
 
@@ -1094,6 +1193,7 @@ function initEventListeners() {
     item.classList.add('active');
     state.activeFilter.agent = item.getAttribute('data-filter-agent') || '';
     fetchMessages();
+    if (window.matchMedia('(max-width: 768px)').matches) closeMobileDrawers();
   });
 
   // Periodic polling for system metrics if on system view
