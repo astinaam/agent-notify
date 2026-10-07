@@ -1,7 +1,7 @@
 // agent-notify Web Dashboard — Messages & System Metrics Controller
 
 const state = {
-  activeView: 'messages', // 'messages' | 'channel' | 'system'
+  activeView: 'messages', // 'messages' | 'channel' | 'archives' | 'system'
   messages: [],
   agents: [],
   stats: null,
@@ -16,10 +16,19 @@ const state = {
   historyData: null,
   theme: localStorage.getItem('agent_notify_theme') || 'dark',
   channel: {
+    activeCode: 'main',
+    channels: [],
     status: { exists: false, agentCount: 0, messageCount: 0 },
     agents: [],
     messages: [],
+    archives: [],
     filterAgent: '',
+    humanName: 'Human',
+  },
+  archives: {
+    list: [],
+    selected: null, // filename
+    detail: null,
   },
 };
 
@@ -28,25 +37,52 @@ const dom = {
   body: document.body,
   tabMessages: document.getElementById('tabMessages'),
   tabChannel: document.getElementById('tabChannel'),
+  tabArchives: document.getElementById('tabArchives'),
   tabSystem: document.getElementById('tabSystem'),
   messagesView: document.getElementById('messagesView'),
   channelView: document.getElementById('channelView'),
+  archivesView: document.getElementById('archivesView'),
   systemView: document.getElementById('systemView'),
   sidebar: document.getElementById('sidebar'),
   searchContainer: document.getElementById('searchHeaderContainer'),
   channelAgentCount: document.getElementById('channelAgentCount'),
+  channelListCount: document.getElementById('channelListCount'),
+  channelCodeList: document.getElementById('channelCodeList'),
+  channelListSidebar: document.getElementById('channelListSidebar'),
+  channelListToggleBtn: document.getElementById('channelListToggleBtn'),
+  channelListCloseBtn: document.getElementById('channelListCloseBtn'),
   channelStatusPill: document.getElementById('channelStatusPill'),
   channelAgentList: document.getElementById('channelAgentList'),
   channelMessages: document.getElementById('channelMessages'),
   channelEmpty: document.getElementById('channelEmpty'),
+  channelChatTitle: document.getElementById('channelChatTitle'),
   channelChatSub: document.getElementById('channelChatSub'),
   channelRefreshBtn: document.getElementById('channelRefreshBtn'),
+  channelMoreMenu: document.getElementById('channelMoreMenu'),
+  channelMoreBtn: document.getElementById('channelMoreBtn'),
+  channelMoreDropdown: document.getElementById('channelMoreDropdown'),
   channelComposeForm: document.getElementById('channelComposeForm'),
   channelComposeInput: document.getElementById('channelComposeInput'),
   channelComposeBtn: document.getElementById('channelComposeBtn'),
   channelRoster: document.getElementById('channelRoster'),
   channelRosterToggleBtn: document.getElementById('channelRosterToggleBtn'),
   channelRosterCloseBtn: document.getElementById('channelRosterCloseBtn'),
+  archivesCount: document.getElementById('archivesCount'),
+  archivesList: document.getElementById('archivesList'),
+  archivesMessages: document.getElementById('archivesMessages'),
+  archivesDetailTitle: document.getElementById('archivesDetailTitle'),
+  archivesDetailSub: document.getElementById('archivesDetailSub'),
+  archivesRefreshBtn: document.getElementById('archivesRefreshBtn'),
+  archivesDeleteBtn: document.getElementById('archivesDeleteBtn'),
+  agentProfileOverlay: document.getElementById('agentProfileOverlay'),
+  agentProfilePopup: document.getElementById('agentProfilePopup'),
+  agentProfileClose: document.getElementById('agentProfileClose'),
+  agentProfileHead: document.getElementById('agentProfileHead'),
+  agentProfileName: document.getElementById('agentProfileName'),
+  agentProfileModel: document.getElementById('agentProfileModel'),
+  agentProfilePresence: document.getElementById('agentProfilePresence'),
+  agentProfileBio: document.getElementById('agentProfileBio'),
+  agentProfileDir: document.getElementById('agentProfileDir'),
   filtersToggleBtn: document.getElementById('filtersToggleBtn'),
   mobileOverlay: document.getElementById('mobileOverlay'),
   themeToggle: document.getElementById('themeToggle'),
@@ -119,8 +155,10 @@ function closeMobileDrawers() {
   document.body.classList.remove('drawer-open');
   if (dom.sidebar) dom.sidebar.classList.remove('mobile-open');
   if (dom.channelRoster) dom.channelRoster.classList.remove('mobile-open');
+  if (dom.channelListSidebar) dom.channelListSidebar.classList.remove('mobile-open');
   if (dom.filtersToggleBtn) dom.filtersToggleBtn.setAttribute('aria-expanded', 'false');
   if (dom.channelRosterToggleBtn) dom.channelRosterToggleBtn.setAttribute('aria-expanded', 'false');
+  if (dom.channelListToggleBtn) dom.channelListToggleBtn.setAttribute('aria-expanded', 'false');
   if (dom.mobileOverlay) dom.mobileOverlay.hidden = true;
 }
 
@@ -142,17 +180,29 @@ function openChannelRosterDrawer() {
   if (dom.channelRosterToggleBtn) dom.channelRosterToggleBtn.setAttribute('aria-expanded', 'true');
 }
 
-// Switch View (Messages / Channel / System)
+function openChannelListDrawer() {
+  if (!dom.channelListSidebar || state.activeView !== 'channel') return;
+  closeMobileDrawers();
+  dom.channelListSidebar.classList.add('mobile-open');
+  document.body.classList.add('drawer-open');
+  if (dom.mobileOverlay) dom.mobileOverlay.hidden = false;
+  if (dom.channelListToggleBtn) dom.channelListToggleBtn.setAttribute('aria-expanded', 'true');
+}
+
+// Switch View (Messages / Channel / Archives / System)
 function switchView(viewName) {
   state.activeView = viewName;
   closeMobileDrawers();
+  closeChannelMenu();
 
   dom.tabMessages.classList.toggle('active', viewName === 'messages');
   if (dom.tabChannel) dom.tabChannel.classList.toggle('active', viewName === 'channel');
+  if (dom.tabArchives) dom.tabArchives.classList.toggle('active', viewName === 'archives');
   dom.tabSystem.classList.toggle('active', viewName === 'system');
 
   dom.messagesView.style.display = viewName === 'messages' ? 'flex' : 'none';
   if (dom.channelView) dom.channelView.style.display = viewName === 'channel' ? 'flex' : 'none';
+  if (dom.archivesView) dom.archivesView.style.display = viewName === 'archives' ? 'flex' : 'none';
   dom.systemView.style.display = viewName === 'system' ? 'flex' : 'none';
 
   if (viewName === 'messages') {
@@ -163,6 +213,10 @@ function switchView(viewName) {
     dom.sidebar.classList.add('hidden');
     dom.searchContainer.style.display = 'none';
     fetchChannel();
+  } else if (viewName === 'archives') {
+    dom.sidebar.classList.add('hidden');
+    dom.searchContainer.style.display = 'none';
+    fetchArchivesPage();
   } else {
     dom.sidebar.classList.add('hidden');
     dom.searchContainer.style.display = 'none';
@@ -893,14 +947,196 @@ function checkUrlAnchorHighlight() {
   }
 }
 
-async function fetchChannel() {
+function formatArchiveLabel(archive) {
+  if (archive.label) return archive.label;
+  const raw = archive.archivedAt || '';
+  const d = raw ? new Date(raw) : null;
+  if (d && !Number.isNaN(d.getTime())) {
+    return d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  }
+  return (archive.filename || 'Archive').replace(/^channel-archive-/, '').replace(/\.json$/, '').slice(0, 24);
+}
+
+function applyChannelSnapshot(data) {
+  if (data.activeCode) state.channel.activeCode = data.activeCode;
+  if (Array.isArray(data.channels)) state.channel.channels = data.channels;
+  if (data.status) state.channel.status = data.status;
+  if (Array.isArray(data.agents)) state.channel.agents = data.agents;
+  if (Array.isArray(data.messages)) state.channel.messages = data.messages;
+  if (data.humanName) state.channel.humanName = data.humanName;
+  if (Array.isArray(data.archives)) {
+    state.channel.archives = data.archives;
+  }
+}
+
+function closeChannelMenu() {
+  if (dom.channelMoreDropdown) {
+    dom.channelMoreDropdown.classList.remove('is-open');
+    dom.channelMoreDropdown.hidden = true;
+  }
+  if (dom.channelMoreBtn) dom.channelMoreBtn.setAttribute('aria-expanded', 'false');
+}
+
+function toggleChannelMenu() {
+  if (!dom.channelMoreDropdown || !dom.channelMoreBtn) return;
+  const willOpen = !dom.channelMoreDropdown.classList.contains('is-open');
+  closeChannelMenu();
+  if (willOpen) {
+    dom.channelMoreDropdown.hidden = false;
+    dom.channelMoreDropdown.classList.add('is-open');
+    dom.channelMoreBtn.setAttribute('aria-expanded', 'true');
+  }
+}
+
+function monogramFromName(name) {
+  const parts = String(name || '?')
+    .trim()
+    .split(/[\s_\-./]+/)
+    .filter(Boolean);
+  if (!parts.length) return '?';
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
+function chatheadHue(name) {
+  const s = String(name || '');
+  let hash = 0;
+  for (let i = 0; i < s.length; i++) hash = (hash * 31 + s.charCodeAt(i)) >>> 0;
+  return hash % 360;
+}
+
+function findAgentProfile(name) {
+  const key = String(name || '').toLowerCase();
+  const human = (state.channel.humanName || 'Human').toLowerCase();
+  if (key === human || key === 'human') {
+    return {
+      name: state.channel.humanName || 'Human',
+      model: 'Human',
+      bio: 'You — channel human participant',
+      dir: '—',
+      isHuman: true,
+    };
+  }
+  // Prefer archived roster when viewing an archive (live roster was reset)
+  const archiveAgents =
+    state.activeView === 'archives' && Array.isArray(state.archives.detail?.agents)
+      ? state.archives.detail.agents
+      : [];
+  const archived = archiveAgents.find((a) => (a.name || '').toLowerCase() === key);
+  if (archived) return { ...archived, isHuman: false };
+
+  const agents = state.channel.agents || [];
+  const hit = agents.find((a) => (a.name || '').toLowerCase() === key);
+  if (hit) return { ...hit, isHuman: false };
+  return {
+    name: name || 'Unknown',
+    model: 'unknown',
+    bio: 'Not currently registered on the channel',
+    dir: '—',
+    isHuman: false,
+  };
+}
+
+const PRESENCE_ACTIVE_MS = 3 * 60 * 1000;
+const PRESENCE_AWAY_MS = 10 * 60 * 1000;
+
+function agentPresence(lastSeenAt) {
+  const t = lastSeenAt ? Date.parse(lastSeenAt) : NaN;
+  if (!Number.isFinite(t)) return { presence: 'offline', label: 'Offline' };
+  const age = Date.now() - t;
+  if (age <= PRESENCE_ACTIVE_MS) return { presence: 'active', label: 'Active now' };
+  if (age <= PRESENCE_AWAY_MS) return { presence: 'away', label: 'Away' };
+  return { presence: 'offline', label: 'Offline' };
+}
+
+function presenceMarkup(lastSeenAt) {
+  const p = agentPresence(lastSeenAt);
+  return `<span class="presence presence-${p.presence}" data-last-seen="${escapeHtml(lastSeenAt || '')}">
+    <span class="presence-dot" aria-hidden="true"></span>
+    <span class="presence-label">${p.label}</span>
+  </span>`;
+}
+
+function refreshPresenceBadges() {
+  document.querySelectorAll('[data-last-seen]').forEach((el) => {
+    const p = agentPresence(el.getAttribute('data-last-seen'));
+    el.classList.remove('presence-active', 'presence-away', 'presence-offline');
+    el.classList.add('presence', `presence-${p.presence}`);
+    const label = el.querySelector('.presence-label');
+    if (label) label.textContent = p.label;
+  });
+}
+
+function renderChatheadButton(name, { large = false } = {}) {
+  const mono = monogramFromName(name);
+  const hue = chatheadHue(name);
+  const sizeClass = large ? 'chathead-lg' : '';
+  return `<button type="button" class="chathead ${sizeClass}" data-agent-profile="${escapeHtml(name)}" style="--chathead-hue: ${hue}" title="${escapeHtml(name)}" aria-label="Profile: ${escapeHtml(name)}">${escapeHtml(mono)}</button>`;
+}
+
+function openAgentProfile(name) {
+  const profile = findAgentProfile(name);
+  if (dom.agentProfileHead) {
+    dom.agentProfileHead.textContent = monogramFromName(profile.name);
+    dom.agentProfileHead.style.setProperty('--chathead-hue', String(chatheadHue(profile.name)));
+  }
+  if (dom.agentProfileName) dom.agentProfileName.textContent = profile.name || 'Agent';
+  if (dom.agentProfileModel) dom.agentProfileModel.textContent = profile.model || '—';
+  if (dom.agentProfilePresence) {
+    const p = agentPresence(profile.lastSeenAt);
+    dom.agentProfilePresence.className = `presence presence-${p.presence}`;
+    dom.agentProfilePresence.setAttribute('data-last-seen', profile.lastSeenAt || '');
+    const label = dom.agentProfilePresence.querySelector('.presence-label');
+    if (label) label.textContent = profile.lastSeenAt ? p.label : 'Offline';
+  }
+  if (dom.agentProfileBio) dom.agentProfileBio.textContent = profile.bio || '—';
+  if (dom.agentProfileDir) dom.agentProfileDir.textContent = profile.dir || '—';
+  if (dom.agentProfileOverlay) {
+    dom.agentProfileOverlay.hidden = false;
+    document.body.classList.add('agent-profile-open');
+  }
+}
+
+function closeAgentProfile() {
+  if (dom.agentProfileOverlay) dom.agentProfileOverlay.hidden = true;
+  document.body.classList.remove('agent-profile-open');
+}
+
+function renderMessageBubbles(messages, humanLabel) {
+  return messages
+    .map((m) => {
+      const isHuman = (m.from || '').toLowerCase() === humanLabel.toLowerCase();
+      const isDm = m.kind === 'dm';
+      const portalOnly = m.telegramRelay === false;
+      const ts = (m.createdAt || '').replace('T', ' ').replace(/\.\d+Z$/, 'Z');
+      const head = renderChatheadButton(m.from);
+      return `
+        <div class="channel-msg-row ${isHuman ? 'is-human' : ''}">
+          ${isHuman ? '' : head}
+          <div class="channel-bubble ${isHuman ? 'is-human' : ''} ${isDm ? 'is-dm' : ''} ${portalOnly ? 'is-portal-only' : ''}">
+            <div class="channel-bubble-meta">
+              <span class="channel-bubble-from">${escapeHtml(m.from)}${isDm ? ` → ${escapeHtml(m.to || '?')}` : ''}</span>
+              ${isDm ? '<span class="channel-dm-badge">DM</span>' : ''}
+              ${portalOnly ? '<span class="channel-portal-badge" title="Not relayed to Telegram">Portal</span>' : ''}
+              <span>${escapeHtml(ts)}</span>
+            </div>
+            <div class="channel-bubble-body">${escapeHtml(m.body || '')}</div>
+          </div>
+          ${isHuman ? head : ''}
+        </div>
+      `;
+    })
+    .join('');
+}
+
+async function fetchChannel(code) {
+  const active = code || state.channel.activeCode || 'main';
   try {
-    const res = await fetch('/api/channel');
+    const res = await fetch(`/api/channel?code=${encodeURIComponent(active)}`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
-    state.channel.status = data.status || { exists: false, agentCount: 0, messageCount: 0 };
-    state.channel.agents = data.agents || [];
-    state.channel.messages = data.messages || [];
+    applyChannelSnapshot(data);
+    state.channel.activeCode = data.activeCode || active;
     renderChannel();
   } catch (err) {
     if (dom.channelMessages) {
@@ -909,24 +1145,72 @@ async function fetchChannel() {
   }
 }
 
+function selectChannel(code) {
+  if (!code || code === state.channel.activeCode) return;
+  state.channel.activeCode = code;
+  state.channel.filterAgent = '';
+  fetchChannel(code);
+  if (window.matchMedia('(max-width: 768px)').matches) closeMobileDrawers();
+}
+
+function renderChannelList() {
+  if (!dom.channelCodeList) return;
+  const channels = state.channel.channels || [];
+  const active = state.channel.activeCode || 'main';
+  if (dom.channelListCount) dom.channelListCount.textContent = String(channels.length);
+  if (!channels.length) {
+    dom.channelCodeList.innerHTML = '<div class="channel-empty-roster">No channels</div>';
+    return;
+  }
+  dom.channelCodeList.innerHTML = channels
+    .map((c) => {
+      const isActive = c.code === active;
+      const lock = c.deletable === false ? '<span class="channel-lock" title="Protected">🔒</span>' : '';
+      return `
+        <button type="button" class="channel-code-card ${isActive ? 'active' : ''}" data-channel-code="${escapeHtml(c.code)}">
+          <span class="channel-code-name">#${escapeHtml(c.code)} ${lock}</span>
+          <span class="channel-code-purpose">${escapeHtml(c.purpose || '')}</span>
+          <span class="channel-code-meta">${c.agentCount || 0} agents · ${c.messageCount || 0} msgs</span>
+        </button>`;
+    })
+    .join('');
+}
+
 function renderChannel() {
   if (!dom.channelMessages) return;
-  const { status, agents, messages, filterAgent } = state.channel;
+  const { status, agents, messages, filterAgent, humanName, activeCode } = state.channel;
+  const humanLabel = humanName || 'Human';
+  const code = activeCode || status.code || 'main';
+
+  renderChannelList();
+
+  if (dom.channelComposeInput) {
+    dom.channelComposeInput.placeholder = `Message #${code} as ${humanLabel}…`;
+  }
+  document.querySelectorAll('#channelMoreDropdown [data-archive-action]').forEach((btn) => {
+    btn.disabled = !status.exists;
+  });
+  if (dom.channelRosterToggleBtn) {
+    dom.channelRosterToggleBtn.textContent = `Agents (${agents.length})`;
+  }
+  if (dom.channelChatTitle) {
+    dom.channelChatTitle.textContent = `#${code}`;
+  }
 
   if (dom.channelAgentCount) dom.channelAgentCount.textContent = String(agents.length);
   if (dom.channelStatusPill) {
     if (status.exists) {
       dom.channelStatusPill.classList.add('active');
-      dom.channelStatusPill.textContent = `${status.agentCount} agents · ${status.messageCount} msgs`;
+      dom.channelStatusPill.textContent = `#${code} · ${status.agentCount} agents · ${status.messageCount} msgs`;
     } else {
       dom.channelStatusPill.classList.remove('active');
-      dom.channelStatusPill.textContent = 'No channel';
+      dom.channelStatusPill.textContent = `No channel #${code}`;
     }
   }
   if (dom.channelChatSub) {
     dom.channelChatSub.textContent = status.exists
-      ? `Created ${status.createdAt || ''} by ${status.createdBy || 'Human'}`
-      : 'Shared room + DMs (all relayed to Telegram)';
+      ? `${status.purpose || ''} · you post as ${humanLabel}`
+      : 'Select or create a channel';
   }
 
   if (dom.channelAgentList) {
@@ -939,59 +1223,47 @@ function renderChannel() {
           <span class="channel-agent-bio">Show full channel history</span>
         </button>`,
         ...agents.map((a) => `
-          <button class="channel-agent-card ${filterAgent === a.name ? 'active' : ''}" data-agent="${escapeHtml(a.name)}">
-            <span class="channel-agent-name">${escapeHtml(a.name)}</span>
-            <span class="channel-agent-bio">${escapeHtml(a.bio || '')}</span>
-            <span class="channel-agent-meta">
-              <span>${escapeHtml(a.model || 'unknown')}</span>
-              <span title="${escapeHtml(a.dir || '')}">${escapeHtml(a.dir || '')}</span>
-            </span>
-          </button>
+          <div class="channel-agent-card ${filterAgent === a.name ? 'active' : ''}">
+            ${renderChatheadButton(a.name)}
+            <button type="button" class="channel-agent-card-body" data-agent="${escapeHtml(a.name)}">
+              <span class="channel-agent-name">${escapeHtml(a.name)}</span>
+              ${presenceMarkup(a.lastSeenAt)}
+              <span class="channel-agent-bio">${escapeHtml(a.bio || '')}</span>
+              <span class="channel-agent-meta">
+                <span>${escapeHtml(a.model || 'unknown')}</span>
+                <span title="${escapeHtml(a.dir || '')}">${escapeHtml(a.dir || '')}</span>
+              </span>
+            </button>
+          </div>
         `),
       ].join('');
     }
   }
 
+  if (!status.exists) {
+    dom.channelMessages.innerHTML = `<div class="channel-empty"><div class="empty-title">No channel #${escapeHtml(code)}</div><div class="empty-desc">Create with <code>agent-notify channel create --code ${escapeHtml(code)} --purpose "…"</code></div></div>`;
+    return;
+  }
+
   let visible = messages;
   if (filterAgent) {
     const f = filterAgent.toLowerCase();
-    visible = messages.filter(
+    visible = visible.filter(
       (m) =>
         m.from.toLowerCase() === f ||
         (m.to && m.to.toLowerCase() === f)
     );
   }
 
-  if (!status.exists) {
-    dom.channelMessages.innerHTML = `<div class="channel-empty"><div class="empty-title">No channel yet</div><div class="empty-desc">Create with <code>agent-notify channel create</code></div></div>`;
-    return;
-  }
-
   if (!visible.length) {
-    dom.channelMessages.innerHTML = `<div class="channel-empty"><div class="empty-title">No messages yet</div><div class="empty-desc">Agents can <code>channel say</code> / <code>channel dm</code>, or post here as Human.</div></div>`;
+    dom.channelMessages.innerHTML = `<div class="channel-empty"><div class="empty-title">No messages yet</div><div class="empty-desc">Agents: <code>channel say -C ${escapeHtml(code)} -f Name --no-telegram "…"</code>. You post here as ${escapeHtml(humanLabel)}.</div></div>`;
     return;
   }
 
   const wasNearBottom =
     dom.channelMessages.scrollHeight - dom.channelMessages.scrollTop - dom.channelMessages.clientHeight < 80;
 
-  dom.channelMessages.innerHTML = visible
-    .map((m) => {
-      const isHuman = (m.from || '').toLowerCase() === 'human';
-      const isDm = m.kind === 'dm';
-      const ts = (m.createdAt || '').replace('T', ' ').replace(/\.\d+Z$/, 'Z');
-      return `
-        <div class="channel-bubble ${isHuman ? 'is-human' : ''} ${isDm ? 'is-dm' : ''}">
-          <div class="channel-bubble-meta">
-            <span class="channel-bubble-from">${escapeHtml(m.from)}${isDm ? ` → ${escapeHtml(m.to || '?')}` : ''}</span>
-            ${isDm ? '<span class="channel-dm-badge">DM</span>' : ''}
-            <span>${escapeHtml(ts)}</span>
-          </div>
-          <div class="channel-bubble-body">${escapeHtml(m.body || '')}</div>
-        </div>
-      `;
-    })
-    .join('');
+  dom.channelMessages.innerHTML = renderMessageBubbles(visible, humanLabel);
 
   if (wasNearBottom) {
     dom.channelMessages.scrollTop = dom.channelMessages.scrollHeight;
@@ -999,14 +1271,170 @@ function renderChannel() {
 }
 
 async function postChannelMessage(text) {
+  const code = state.channel.activeCode || 'main';
   const res = await fetch('/api/channel/say', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ text }),
+    body: JSON.stringify({ text, code }),
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
-  await fetchChannel();
+  if (data.snapshot) applyChannelSnapshot(data.snapshot);
+  else await fetchChannel(code);
+  renderChannel();
+}
+
+async function archiveChannelHistory(clearAfter) {
+  const code = state.channel.activeCode || 'main';
+  const endpoint = clearAfter ? '/api/channel/clear' : '/api/channel/archive';
+  const res = await fetch(endpoint, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ code }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+  if (data.snapshot) applyChannelSnapshot(data.snapshot);
+  else await fetchChannel(code);
+  renderChannel();
+  showToast(
+    clearAfter
+      ? `Cleared #${code}: ${data.messageCount || 0} msg(s) · ${data.agentCount || 0} agent(s)`
+      : `Archived #${code}: ${data.messageCount || 0} msg(s) · ${data.agentCount || 0} agent(s) (roster reset)`
+  );
+  if (data.filename) {
+    state.archives.selected = data.filename;
+  }
+}
+
+async function fetchArchivesPage() {
+  try {
+    const res = await fetch('/api/channel/archives');
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    state.archives.list = data.archives || [];
+    state.channel.humanName = data.humanName || state.channel.humanName;
+    if (
+      state.archives.selected &&
+      !state.archives.list.some((a) => a.filename === state.archives.selected)
+    ) {
+      state.archives.selected = null;
+      state.archives.detail = null;
+    }
+    renderArchivesPage();
+    if (state.archives.selected) {
+      const meta = state.archives.list.find((a) => a.filename === state.archives.selected);
+      await loadArchiveDetail(state.archives.selected, meta?.channelCode);
+    }
+  } catch (err) {
+    if (dom.archivesMessages) {
+      dom.archivesMessages.innerHTML = `<div class="channel-empty"><div class="empty-title">Failed to load archives</div><div class="empty-desc">${escapeHtml(err.message)}</div></div>`;
+    }
+  }
+}
+
+async function loadArchiveDetail(filename, channelCode) {
+  try {
+    const code =
+      channelCode ||
+      state.archives.list.find((a) => a.filename === filename)?.channelCode ||
+      'main';
+    const res = await fetch(
+      `/api/channel/archives/${encodeURIComponent(filename)}?code=${encodeURIComponent(code)}`
+    );
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    state.archives.selected = filename;
+    state.archives.detail = data;
+    renderArchivesPage();
+  } catch (err) {
+    showToast(err.message || 'Failed to open archive');
+    state.archives.selected = null;
+    state.archives.detail = null;
+    renderArchivesPage();
+  }
+}
+
+async function deleteSelectedArchive() {
+  const filename = state.archives.selected;
+  if (!filename) return;
+  if (!confirm(`Delete archive permanently?\n${filename}`)) return;
+  const code =
+    state.archives.list.find((a) => a.filename === filename)?.channelCode ||
+    state.archives.detail?.channelCode ||
+    'main';
+  const res = await fetch(
+    `/api/channel/archives/${encodeURIComponent(filename)}?code=${encodeURIComponent(code)}`,
+    { method: 'DELETE' }
+  );
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+  state.archives.selected = null;
+  state.archives.detail = null;
+  if (Array.isArray(data.archives)) {
+    state.archives.list = data.archives;
+  } else {
+    await fetchArchivesPage();
+    return;
+  }
+  showToast('Archive deleted');
+  renderArchivesPage();
+}
+
+function renderArchivesPage() {
+  const list = state.archives.list || [];
+  const humanLabel = state.channel.humanName || 'Human';
+  if (dom.archivesCount) dom.archivesCount.textContent = String(list.length);
+
+  if (dom.archivesList) {
+    if (!list.length) {
+      dom.archivesList.innerHTML = '<div class="archives-empty-list">No archives yet — use Archive on the Channel tab</div>';
+    } else {
+      dom.archivesList.innerHTML = list
+        .map((a) => {
+          const active = state.archives.selected === a.filename;
+          const tag = a.channelDeleted ? 'deleted' : a.cleared ? 'cleared' : 'snap';
+          const ch = a.channelCode ? `#${a.channelCode}` : '';
+          return `
+            <button type="button" class="archives-item nav-item ${active ? 'active' : ''}" data-archive="${escapeHtml(a.filename)}" data-channel-code="${escapeHtml(a.channelCode || 'main')}">
+              <span class="nav-icon" aria-hidden="true">📦</span>
+              <span class="archives-item-title nav-text" title="${escapeHtml(a.filename)}">${escapeHtml(ch ? ch + ' · ' : '')}${escapeHtml(formatArchiveLabel(a))}</span>
+              <span class="archives-item-meta nav-badge">${a.messageCount} · ${tag}</span>
+            </button>
+          `;
+        })
+        .join('');
+    }
+  }
+
+  if (dom.archivesDeleteBtn) {
+    dom.archivesDeleteBtn.disabled = !state.archives.selected;
+  }
+
+  if (!state.archives.detail || !state.archives.selected) {
+    if (dom.archivesDetailTitle) dom.archivesDetailTitle.textContent = 'Select an archive';
+    if (dom.archivesDetailSub) dom.archivesDetailSub.textContent = 'Saved channel conversations (human view)';
+    if (dom.archivesMessages) {
+      dom.archivesMessages.innerHTML = `<div class="channel-empty"><div class="empty-title">No archive selected</div><div class="empty-desc">Pick an archive from the list, or create one from the Channel tab.</div></div>`;
+    }
+    return;
+  }
+
+  const detail = state.archives.detail;
+  if (dom.archivesDetailTitle) {
+    dom.archivesDetailTitle.textContent = formatArchiveLabel(detail);
+  }
+  if (dom.archivesDetailSub) {
+    const tag = detail.cleared ? 'after clear' : 'snapshot';
+    dom.archivesDetailSub.textContent = `${detail.messageCount || 0} msgs · ${tag} · ${detail.archivedAt || ''}`;
+  }
+
+  const msgs = detail.messages || [];
+  if (!msgs.length) {
+    dom.archivesMessages.innerHTML = `<div class="channel-empty"><div class="empty-title">Empty archive</div><div class="empty-desc">This archive has no messages.</div></div>`;
+    return;
+  }
+  dom.archivesMessages.innerHTML = renderMessageBubbles(msgs, humanLabel);
 }
 
 // Server-Sent Events (SSE) Live Feed Subscription
@@ -1030,13 +1458,13 @@ function initSSE() {
   eventSource.addEventListener('channel_changed', (e) => {
     try {
       const data = JSON.parse(e.data);
-      state.channel.status = data.status || state.channel.status;
-      state.channel.agents = data.agents || [];
-      state.channel.messages = data.messages || [];
-      if (state.activeView === 'channel') renderChannel();
+      if (Array.isArray(data.channels)) state.channel.channels = data.channels;
+      if (data.humanName) state.channel.humanName = data.humanName;
     } catch {
-      if (state.activeView === 'channel') fetchChannel();
+      /* ignore parse errors */
     }
+    if (state.activeView === 'channel') fetchChannel();
+    if (state.activeView === 'archives') fetchArchivesPage();
   });
 }
 
@@ -1045,6 +1473,7 @@ function initEventListeners() {
   // Tabs
   dom.tabMessages.addEventListener('click', () => switchView('messages'));
   if (dom.tabChannel) dom.tabChannel.addEventListener('click', () => switchView('channel'));
+  if (dom.tabArchives) dom.tabArchives.addEventListener('click', () => switchView('archives'));
   dom.tabSystem.addEventListener('click', () => switchView('system'));
 
   if (dom.filtersToggleBtn) {
@@ -1054,10 +1483,12 @@ function initEventListeners() {
     });
   }
 
-  if (dom.channelRosterToggleBtn) {
-    dom.channelRosterToggleBtn.addEventListener('click', () => {
-      if (dom.channelRoster?.classList.contains('mobile-open')) closeMobileDrawers();
-      else openChannelRosterDrawer();
+  if (dom.channelListToggleBtn) {
+    dom.channelListToggleBtn.addEventListener('click', () => {
+      if (!window.matchMedia('(max-width: 768px)').matches) return;
+      closeChannelMenu();
+      if (dom.channelListSidebar?.classList.contains('mobile-open')) closeMobileDrawers();
+      else openChannelListDrawer();
     });
   }
 
@@ -1065,25 +1496,138 @@ function initEventListeners() {
     dom.channelRosterCloseBtn.addEventListener('click', () => closeMobileDrawers());
   }
 
+  if (dom.channelListCloseBtn) {
+    dom.channelListCloseBtn.addEventListener('click', () => closeMobileDrawers());
+  }
+
+  if (dom.channelCodeList) {
+    dom.channelCodeList.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-channel-code]');
+      if (!btn) return;
+      selectChannel(btn.getAttribute('data-channel-code'));
+    });
+  }
+
   if (dom.mobileOverlay) {
     dom.mobileOverlay.addEventListener('click', () => closeMobileDrawers());
   }
 
   window.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') closeMobileDrawers();
+    if (e.key === 'Escape') {
+      closeAgentProfile();
+      closeChannelMenu();
+      closeMobileDrawers();
+    }
   });
 
-  if (dom.channelRefreshBtn) {
-    dom.channelRefreshBtn.addEventListener('click', () => fetchChannel());
+  document.addEventListener('click', (e) => {
+    if (!dom.channelMoreMenu?.contains(e.target)) closeChannelMenu();
+  });
+
+  if (dom.channelMoreBtn && dom.channelMoreDropdown) {
+    dom.channelMoreBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      toggleChannelMenu();
+    });
+    dom.channelMoreDropdown.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const refresh = e.target.closest('#channelRefreshBtn');
+      if (refresh) {
+        closeChannelMenu();
+        fetchChannel();
+        return;
+      }
+      const agentsBtn = e.target.closest('#channelRosterToggleBtn');
+      if (agentsBtn) {
+        closeChannelMenu();
+        if (window.matchMedia('(max-width: 768px)').matches) {
+          if (dom.channelRoster?.classList.contains('mobile-open')) closeMobileDrawers();
+          else openChannelRosterDrawer();
+        } else {
+          dom.channelRoster?.classList.toggle('roster-collapsed');
+        }
+        return;
+      }
+      const btn = e.target.closest('[data-archive-action]');
+      if (!btn || btn.disabled) return;
+      const action = btn.getAttribute('data-archive-action');
+      closeChannelMenu();
+      const clearAfter = action === 'clear';
+      const ok = clearAfter
+        ? confirm('Archive then CLEAR live conversation? Live chat will be emptied; open Archives tab to view.')
+        : confirm('Archive the current live conversation? Live chat will be kept.');
+      if (!ok) return;
+      try {
+        document.querySelectorAll('#channelMoreDropdown [data-archive-action]').forEach((el) => {
+          el.disabled = true;
+        });
+        await archiveChannelHistory(clearAfter);
+      } catch (err) {
+        showToast(err.message || 'Archive failed');
+      } finally {
+        const enabled = Boolean(state.channel.status.exists);
+        document.querySelectorAll('#channelMoreDropdown [data-archive-action]').forEach((el) => {
+          el.disabled = !enabled;
+        });
+      }
+    });
+  }
+
+  if (dom.archivesRefreshBtn) {
+    dom.archivesRefreshBtn.addEventListener('click', () => fetchArchivesPage());
+  }
+
+  if (dom.archivesDeleteBtn) {
+    dom.archivesDeleteBtn.addEventListener('click', async () => {
+      try {
+        await deleteSelectedArchive();
+      } catch (err) {
+        showToast(err.message || 'Delete failed');
+      }
+    });
+  }
+
+  if (dom.archivesList) {
+    dom.archivesList.addEventListener('click', (e) => {
+      const item = e.target.closest('[data-archive]');
+      if (!item) return;
+      loadArchiveDetail(
+        item.getAttribute('data-archive'),
+        item.getAttribute('data-channel-code') || undefined
+      );
+    });
   }
 
   if (dom.channelAgentList) {
     dom.channelAgentList.addEventListener('click', (e) => {
-      const card = e.target.closest('.channel-agent-card');
-      if (!card) return;
-      state.channel.filterAgent = card.getAttribute('data-agent') || '';
+      const profileBtn = e.target.closest('[data-agent-profile]');
+      if (profileBtn) {
+        e.stopPropagation();
+        openAgentProfile(profileBtn.getAttribute('data-agent-profile'));
+        return;
+      }
+      const body = e.target.closest('[data-agent]');
+      if (!body) return;
+      state.channel.filterAgent = body.getAttribute('data-agent') || '';
       renderChannel();
       if (window.matchMedia('(max-width: 768px)').matches) closeMobileDrawers();
+    });
+  }
+
+  document.addEventListener('click', (e) => {
+    const profileBtn = e.target.closest('[data-agent-profile]');
+    if (profileBtn && !dom.channelAgentList?.contains(profileBtn)) {
+      e.preventDefault();
+      openAgentProfile(profileBtn.getAttribute('data-agent-profile'));
+    }
+  });
+
+  if (dom.agentProfileClose) {
+    dom.agentProfileClose.addEventListener('click', () => closeAgentProfile());
+  }
+  if (dom.agentProfileOverlay) {
+    dom.agentProfileOverlay.addEventListener('click', (e) => {
+      if (e.target === dom.agentProfileOverlay) closeAgentProfile();
     });
   }
 
@@ -1202,6 +1746,7 @@ function initEventListeners() {
       fetchSystemMetrics();
       fetchSystemHistory();
     }
+    refreshPresenceBadges();
   }, 20000);
 }
 
