@@ -5,14 +5,18 @@ import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { messageStore } from './store.js';
 import { channelStore } from './channel_store.js';
-import { relayChannelMessage } from './channel_relay.js';
+import {
+  relayChannelMessage,
+  relayHistoryArchived,
+  relayHistoryCleared,
+} from './channel_relay.js';
 import { getNetworkAddresses } from './network.js';
-import { resolveConfig, getConfigDir } from './config.js';
+import { resolveConfig, getConfigDir, getHumanName } from './config.js';
 import { getSystemMetrics, startMonitorService } from './monitor.js';
 import { startBotListener, stopBotListener } from './bot_listener.js';
 import { metricsStore } from './metrics_store.js';
 import type { NetworkAddresses } from './types.js';
-import { CHANNEL_HUMAN_NAME } from './types.js';
+import { MAIN_CHANNEL_CODE } from './types.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -52,7 +56,7 @@ export function createServer(): http.Server {
     const pathname = parsedUrl.pathname;
 
     res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
     if (req.method === 'OPTIONS') {
@@ -215,12 +219,124 @@ export function createServer(): http.Server {
       return;
     }
 
-    // API: GET /api/channel
+    // API: GET /api/channel?code=main — snapshot for one channel (+ channel list)
     if (pathname === '/api/channel' && req.method === 'GET') {
-      const snapshot = channelStore.getSnapshot();
+      channelStore.ensureMain();
+      const code = (parsedUrl.searchParams.get('code') || MAIN_CHANNEL_CODE).trim() || MAIN_CHANNEL_CODE;
+      const snapshot = channelStore.getSnapshot(code);
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(snapshot));
       return;
+    }
+
+    // API: GET /api/channels — list all channels
+    if (pathname === '/api/channels' && req.method === 'GET') {
+      channelStore.ensureMain();
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ channels: channelStore.listChannels(), humanName: getHumanName() }));
+      return;
+    }
+
+    // API: GET /api/channel/archives?code= (optional) — all archives or per-channel
+    if (pathname === '/api/channel/archives' && req.method === 'GET') {
+      const code = parsedUrl.searchParams.get('code') || undefined;
+      const archives = channelStore.listArchives(code || undefined);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ archives, humanName: getHumanName() }));
+      return;
+    }
+
+    // API: GET /api/channel/archives/:filename?code=
+    if (pathname.startsWith('/api/channel/archives/') && req.method === 'GET') {
+      const filename = decodeURIComponent(pathname.replace('/api/channel/archives/', ''));
+      const code = parsedUrl.searchParams.get('code') || MAIN_CHANNEL_CODE;
+      try {
+        const archive = channelStore.getArchive(filename, code);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(archive));
+        return;
+      } catch (err: any) {
+        res.writeHead(404, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: err.message }));
+        return;
+      }
+    }
+
+    // API: DELETE /api/channel/archives/:filename?code=
+    if (pathname.startsWith('/api/channel/archives/') && req.method === 'DELETE') {
+      const filename = decodeURIComponent(pathname.replace('/api/channel/archives/', ''));
+      const code =
+        parsedUrl.searchParams.get('code') ||
+        MAIN_CHANNEL_CODE;
+      try {
+        const result = channelStore.deleteArchive(filename, code);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(
+          JSON.stringify({
+            success: true,
+            ...result,
+            archives: channelStore.listArchives(),
+            snapshot: channelStore.getSnapshot(code),
+          })
+        );
+        return;
+      } catch (err: any) {
+        res.writeHead(404, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: err.message }));
+        return;
+      }
+    }
+
+    // API: POST /api/channel/archive — snapshot without clearing
+    if (pathname === '/api/channel/archive' && req.method === 'POST') {
+      try {
+        const body = await parseJsonBody(req);
+        const code =
+          (typeof body.code === 'string' && body.code.trim()) || MAIN_CHANNEL_CODE;
+        if (!channelStore.exists(code)) {
+          res.writeHead(404, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: `No channel #${code}` }));
+          return;
+        }
+        const result = channelStore.archive(
+          code,
+          typeof body.label === 'string' ? body.label : undefined
+        );
+        await relayHistoryArchived(result.archivePath, result.messageCount, result.agentCount, code);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: true, ...result, snapshot: channelStore.getSnapshot(code) }));
+        return;
+      } catch (err: any) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: err.message }));
+        return;
+      }
+    }
+
+    // API: POST /api/channel/clear — archive then empty live history
+    if (pathname === '/api/channel/clear' && req.method === 'POST') {
+      try {
+        const body = await parseJsonBody(req);
+        const code =
+          (typeof body.code === 'string' && body.code.trim()) || MAIN_CHANNEL_CODE;
+        if (!channelStore.exists(code)) {
+          res.writeHead(404, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: `No channel #${code}` }));
+          return;
+        }
+        const result = channelStore.clear(
+          code,
+          typeof body.label === 'string' ? body.label : undefined
+        );
+        await relayHistoryCleared(result.archivePath, result.messageCount, result.agentCount, code);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: true, ...result, snapshot: channelStore.getSnapshot(code) }));
+        return;
+      } catch (err: any) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: err.message }));
+        return;
+      }
     }
 
     // API: POST /api/channel/say — human compose from Portal
@@ -228,25 +344,27 @@ export function createServer(): http.Server {
       try {
         const body = await parseJsonBody(req);
         const text = typeof body.text === 'string' ? body.text.trim() : '';
+        const code =
+          (typeof body.code === 'string' && body.code.trim()) || MAIN_CHANNEL_CODE;
         if (!text) {
           res.writeHead(400, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ error: 'Missing "text" field' }));
           return;
         }
-        if (!channelStore.exists()) {
+        if (!channelStore.exists(code)) {
           res.writeHead(404, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ error: 'No channel exists' }));
+          res.end(JSON.stringify({ error: `No channel #${code}` }));
           return;
         }
-        const msg = channelStore.postMessage({
-          from: CHANNEL_HUMAN_NAME,
+        const msg = channelStore.postMessage(code, {
+          from: getHumanName(),
           body: text,
           kind: 'say',
           requireRegistered: false,
         });
-        await relayChannelMessage(msg);
+        await relayChannelMessage(msg, code);
         res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ success: true, message: msg }));
+        res.end(JSON.stringify({ success: true, message: msg, snapshot: channelStore.getSnapshot(code) }));
         return;
       } catch (err: any) {
         res.writeHead(500, { 'Content-Type': 'application/json' });
@@ -277,7 +395,12 @@ export function createServer(): http.Server {
       };
 
       const onChannelChanged = () => {
-        res.write(`event: channel_changed\ndata: ${JSON.stringify(channelStore.getSnapshot())}\n\n`);
+        res.write(
+          `event: channel_changed\ndata: ${JSON.stringify({
+            channels: channelStore.listChannels(),
+            humanName: getHumanName(),
+          })}\n\n`
+        );
       };
 
       messageStore.on('message_added', onAdded);
@@ -386,6 +509,7 @@ export async function startServer(
   const host = hostOverride || '0.0.0.0';
 
   const server = createServer();
+  channelStore.startWatching();
 
   // Start background resource monitor service if enabled
   startMonitorService();

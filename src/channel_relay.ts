@@ -1,5 +1,5 @@
 import { TelegramClient } from './telegram.js';
-import { resolveConfig, validateConfig } from './config.js';
+import { resolveConfig, validateConfig, getHumanName, isHumanName } from './config.js';
 import type { ChannelAgent, ChannelMessage } from './types.js';
 
 function escapeHtml(text: string): string {
@@ -36,19 +36,35 @@ async function relay(text: string): Promise<void> {
   }
 }
 
-export async function relayChannelCreated(createdBy: string): Promise<void> {
+export async function relayChannelCreated(meta: {
+  code: string;
+  purpose: string;
+  createdBy: string;
+}): Promise<void> {
   await relay(
-    `📡 <b>Channel created</b>\nBy: <b>${escapeHtml(createdBy)}</b>\n\nAgents can now register and chat.`
+    `📡 <b>Channel created</b> <code>#${escapeHtml(meta.code)}</code>\n` +
+      `Purpose: ${escapeHtml(meta.purpose)}\n` +
+      `By: <b>${escapeHtml(meta.createdBy)}</b>`
   );
 }
 
-export async function relayChannelDeleted(): Promise<void> {
-  await relay(`🗑️ <b>Channel deleted</b>\nLive roster and messages removed. Archives kept.`);
+export async function relayChannelUpdated(meta: { code: string; purpose: string }): Promise<void> {
+  await relay(
+    `✏️ <b>Channel updated</b> <code>#${escapeHtml(meta.code)}</code>\n` +
+      `Purpose: ${escapeHtml(meta.purpose)}`
+  );
 }
 
-export async function relayAgentRegistered(agent: ChannelAgent): Promise<void> {
+export async function relayChannelDeleted(code: string, archivePath: string): Promise<void> {
   await relay(
-    `👋 <b>Agent registered</b>\n` +
+    `🗑️ <b>Channel deleted</b> <code>#${escapeHtml(code)}</code>\n` +
+      `Full channel archived.\n<code>${escapeHtml(archivePath)}</code>`
+  );
+}
+
+export async function relayAgentRegistered(agent: ChannelAgent, channelCode = 'main'): Promise<void> {
+  await relay(
+    `👋 <b>Agent registered</b> on <code>#${escapeHtml(channelCode)}</code>\n` +
       `Name: <b>${escapeHtml(agent.name)}</b>\n` +
       `Bio: ${escapeHtml(agent.bio)}\n` +
       `Model: <code>${escapeHtml(agent.model)}</code>\n` +
@@ -56,9 +72,9 @@ export async function relayAgentRegistered(agent: ChannelAgent): Promise<void> {
   );
 }
 
-export async function relayAgentUpdated(agent: ChannelAgent): Promise<void> {
+export async function relayAgentUpdated(agent: ChannelAgent, channelCode = 'main'): Promise<void> {
   await relay(
-    `🔄 <b>Agent status updated</b>\n` +
+    `🔄 <b>Agent status updated</b> on <code>#${escapeHtml(channelCode)}</code>\n` +
       `Name: <b>${escapeHtml(agent.name)}</b>\n` +
       `Bio: ${escapeHtml(agent.bio)}\n` +
       `Model: <code>${escapeHtml(agent.model)}</code>\n` +
@@ -66,27 +82,50 @@ export async function relayAgentUpdated(agent: ChannelAgent): Promise<void> {
   );
 }
 
-export async function relayAgentUnregistered(agent: ChannelAgent): Promise<void> {
-  await relay(`🚪 <b>Agent unregistered</b>\nName: <b>${escapeHtml(agent.name)}</b>`);
+export async function relayAgentUnregistered(agent: ChannelAgent, channelCode = 'main'): Promise<void> {
+  await relay(
+    `🚪 <b>Agent unregistered</b> from <code>#${escapeHtml(channelCode)}</code>\n` +
+      `Name: <b>${escapeHtml(agent.name)}</b>`
+  );
 }
 
-export async function relayChannelMessage(msg: ChannelMessage): Promise<void> {
+export async function relayChannelMessage(msg: ChannelMessage, channelCode = 'main'): Promise<void> {
+  if (msg.telegramRelay === false) return;
+
   if (msg.kind === 'dm') {
     await relay(
-      `🔒 <b>DM</b> <b>${escapeHtml(msg.from)}</b> → <b>${escapeHtml(msg.to || '?')}</b>\n${escapeHtml(msg.body)}`
+      `🔒 <b>DM</b> <code>#${escapeHtml(channelCode)}</code> <b>${escapeHtml(msg.from)}</b> → <b>${escapeHtml(msg.to || '?')}</b>\n${escapeHtml(msg.body)}`
     );
     return;
   }
-  const label = msg.from.toLowerCase() === 'human' ? 'Human' : 'Channel';
+  const label = isHumanName(msg.from) ? getHumanName() : 'Channel';
   await relay(
-    `💬 <b>${escapeHtml(label)}</b> · <b>${escapeHtml(msg.from)}</b>\n${escapeHtml(msg.body)}`
+    `💬 <b>${escapeHtml(label)}</b> <code>#${escapeHtml(channelCode)}</code> · <b>${escapeHtml(msg.from)}</b>\n${escapeHtml(msg.body)}`
   );
 }
 
-export async function relayHistoryCleared(archivePath: string, messageCount: number): Promise<void> {
+export async function relayHistoryArchived(
+  archivePath: string,
+  messageCount: number,
+  agentCount = 0,
+  channelCode = 'main'
+): Promise<void> {
   await relay(
-    `🧹 <b>Channel history cleared</b>\n` +
-      `Archived ${messageCount} message(s)\n` +
+    `📦 <b>Channel archived</b> <code>#${escapeHtml(channelCode)}</code> (live chat kept; roster reset)\n` +
+      `${messageCount} message(s) · ${agentCount} agent(s)\n` +
+      `<code>${escapeHtml(archivePath)}</code>`
+  );
+}
+
+export async function relayHistoryCleared(
+  archivePath: string,
+  messageCount: number,
+  agentCount = 0,
+  channelCode = 'main'
+): Promise<void> {
+  await relay(
+    `🧹 <b>Channel cleared</b> <code>#${escapeHtml(channelCode)}</code>\n` +
+      `Archived ${messageCount} message(s) · ${agentCount} agent(s); live chat & roster emptied\n` +
       `<code>${escapeHtml(archivePath)}</code>`
   );
 }

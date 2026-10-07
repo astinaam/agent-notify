@@ -3,6 +3,7 @@ import path from 'node:path';
 import os from 'node:os';
 import dotenv from 'dotenv';
 import type { TelegramConfig, MonitorConfig } from './types.js';
+import { DEFAULT_CHANNEL_HUMAN_NAME } from './types.js';
 
 dotenv.config();
 
@@ -120,6 +121,12 @@ export function resolveConfig(overrides?: Partial<TelegramConfig>): TelegramConf
       process.cwd(),
   };
 
+  const humanName =
+    (overrides?.humanName ||
+      process.env.AGENT_NOTIFY_HUMAN_NAME ||
+      saved.humanName ||
+      DEFAULT_CHANNEL_HUMAN_NAME).trim() || DEFAULT_CHANNEL_HUMAN_NAME;
+
   return {
     botToken,
     chatId: String(chatId),
@@ -128,9 +135,35 @@ export function resolveConfig(overrides?: Partial<TelegramConfig>): TelegramConf
     includeLinks,
     tailscaleHost,
     lanHost,
+    humanName,
     monitor,
     botListener,
   };
+}
+
+/** Current human display name for the agent channel. */
+export function getHumanName(): string {
+  const saved = loadSavedConfig();
+  const fromEnv = process.env.AGENT_NOTIFY_HUMAN_NAME?.trim();
+  const name = (fromEnv || saved.humanName || DEFAULT_CHANNEL_HUMAN_NAME).trim();
+  return name || DEFAULT_CHANNEL_HUMAN_NAME;
+}
+
+/** Persist human display name used in channel posts / Portal compose. */
+export function setHumanName(name: string): string {
+  const cleaned = name.trim();
+  if (!cleaned) {
+    throw new Error('Human name cannot be empty.');
+  }
+  if (cleaned.length > 64) {
+    throw new Error('Human name must be 64 characters or fewer.');
+  }
+  saveConfig({ humanName: cleaned });
+  return cleaned;
+}
+
+export function isHumanName(name: string): boolean {
+  return name.trim().toLowerCase() === getHumanName().toLowerCase();
 }
 
 export function validateConfig(config: TelegramConfig): { valid: boolean; error?: string } {

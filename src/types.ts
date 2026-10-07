@@ -57,6 +57,8 @@ export interface TelegramConfig {
   includeLinks?: boolean; // include Tailscale & LAN links in messages (default true)
   tailscaleHost?: string; // custom tailscale IP or MagicDNS override
   lanHost?: string; // custom LAN IP override
+  /** Display name for the human participant in the agent channel (default: Human). */
+  humanName?: string;
   monitor?: MonitorConfig; // optional system resource monitor
   botListener?: BotListenerConfig; // optional continuous bot listener config
 }
@@ -141,8 +143,36 @@ export interface NetworkAddresses {
   localhostUrl: string;
 }
 
-/** Fixed display name for the human participant in the agent channel. */
-export const CHANNEL_HUMAN_NAME = 'Human';
+/** Default display name for the human participant in the agent channel. */
+export const DEFAULT_CHANNEL_HUMAN_NAME = 'Human';
+
+/** Undeletable primary channel code. */
+export const MAIN_CHANNEL_CODE = 'main';
+
+/** Agents heartbeat every 2 minutes. Still "active" if seen within 3 minutes. */
+export const PRESENCE_ACTIVE_MS = 3 * 60 * 1000;
+/** Seen within 10 minutes but not recently enough to be active. */
+export const PRESENCE_AWAY_MS = 10 * 60 * 1000;
+
+export type AgentPresence = 'active' | 'away' | 'offline';
+
+export function agentPresence(
+  lastSeenAt?: string | null,
+  now = Date.now()
+): { presence: AgentPresence; label: string; ageSec: number | null } {
+  const t = lastSeenAt ? Date.parse(lastSeenAt) : NaN;
+  if (!Number.isFinite(t)) {
+    return { presence: 'offline', label: 'Offline', ageSec: null };
+  }
+  const age = Math.max(0, now - t);
+  const ageSec = Math.floor(age / 1000);
+  if (age <= PRESENCE_ACTIVE_MS) return { presence: 'active', label: 'Active now', ageSec };
+  if (age <= PRESENCE_AWAY_MS) return { presence: 'away', label: 'Away', ageSec };
+  return { presence: 'offline', label: 'Offline', ageSec };
+}
+
+/** @deprecated Use getHumanName() from config — kept for compatibility. */
+export const CHANNEL_HUMAN_NAME = DEFAULT_CHANNEL_HUMAN_NAME;
 
 export type ChannelMessageKind = 'say' | 'dm' | 'system';
 
@@ -157,8 +187,11 @@ export interface ChannelAgent {
 }
 
 export interface ChannelMeta {
+  code: string;
+  purpose: string;
   createdAt: string;
   createdBy: string;
+  updatedAt?: string;
 }
 
 export interface ChannelState {
@@ -173,14 +206,33 @@ export interface ChannelMessage {
   body: string;
   kind: ChannelMessageKind;
   createdAt: string;
+  /**
+   * When false, message is stored for Portal/agents but not relayed to Telegram.
+   * Default true (relay). Agents use --no-telegram when the human does not need it.
+   */
+  telegramRelay?: boolean;
 }
 
 export interface ChannelStatus {
   exists: boolean;
+  code?: string;
+  purpose?: string;
   createdAt?: string;
   createdBy?: string;
   agentCount: number;
   messageCount: number;
+  deletable?: boolean;
+}
+
+export interface ChannelSummary {
+  code: string;
+  purpose: string;
+  createdAt: string;
+  createdBy: string;
+  updatedAt?: string;
+  agentCount: number;
+  messageCount: number;
+  deletable: boolean;
 }
 
 export interface ChannelArchiveInfo {
@@ -188,4 +240,25 @@ export interface ChannelArchiveInfo {
   path: string;
   archivedAt: string;
   messageCount: number;
+  agentCount?: number;
+  channelCode?: string;
+  /** true when this archive was created by clear (history emptied after). */
+  cleared?: boolean;
+  /** true when entire channel was deleted and archived. */
+  channelDeleted?: boolean;
+  label?: string;
+}
+
+export interface ChannelArchiveRecord {
+  archivedAt: string;
+  messageCount: number;
+  messages: ChannelMessage[];
+  /** Roster snapshotted at archive time (live roster is cleared). */
+  agents?: ChannelAgent[];
+  agentCount?: number;
+  channelCode?: string;
+  channelPurpose?: string;
+  cleared?: boolean;
+  channelDeleted?: boolean;
+  label?: string;
 }

@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { exec, spawn } from 'node:child_process';
 import { promisify } from 'node:util';
-import { getConfigDir, resolveConfig, saveConfig } from './config.js';
+import { getConfigDir, resolveConfig, saveConfig, getHumanName, setHumanName } from './config.js';
 import { messageStore } from './store.js';
 import { getSystemMetrics } from './monitor.js';
 import { getMessageLinks } from './network.js';
@@ -23,7 +23,6 @@ import { taskManager } from './task_tracker.js';
 import { channelStore } from './channel_store.js';
 import { relayChannelMessage } from './channel_relay.js';
 import type { TelegramConfig, StoredMessage } from './types.js';
-import { CHANNEL_HUMAN_NAME } from './types.js';
 
 const execAsync = promisify(exec);
 
@@ -583,7 +582,8 @@ Here are the commands you can use anytime:
 • <code>/sh &lt;cmd&gt;</code> — Run shell command on host
 
 📡 <b>Agent Channel:</b>
-• <code>/channel &lt;text&gt;</code> — Post to the agent channel as Human
+• <code>/channel &lt;text&gt;</code> — Post to the agent channel as you
+• <code>/channel name [Name]</code> — Show or set your human display name
 • <code>/channel status</code> — Channel roster & status
 • <code>/ch &lt;text&gt;</code> — Short alias for /channel
 
@@ -723,31 +723,58 @@ Here are the commands you can use anytime:
 
   private async handleChannelCommand(args: string, replyToMessageId?: number): Promise<void> {
     const trimmed = (args || '').trim();
-    if (!trimmed || trimmed.toLowerCase() === 'status' || trimmed.toLowerCase() === 'agents') {
-      const status = channelStore.getStatus();
-      if (!status.exists) {
+    const lower = trimmed.toLowerCase();
+    const humanName = getHumanName();
+
+    // /channel name  |  /channel name Astinaam
+    if (lower === 'name' || lower.startsWith('name ')) {
+      const newName = trimmed.slice(4).trim();
+      if (!newName) {
         await this.sendReply(
-          `📡 <b>No channel yet.</b>\nCreate with: <code>agent-notify channel create</code>\nThen post here with <code>/channel &lt;text&gt;</code>`,
+          `👤 <b>Human channel name:</b> <b>${escapeHtml(humanName)}</b>\n` +
+            `<i>Change with:</i> <code>/channel name YourName</code>`,
           replyToMessageId
         );
         return;
       }
-      const agents = channelStore.listAgents();
+      try {
+        const saved = setHumanName(newName);
+        await this.sendReply(
+          `✓ Human channel name set to <b>${escapeHtml(saved)}</b>\n` +
+            `<i>Portal compose and /channel posts will use this name.</i>`,
+          replyToMessageId
+        );
+      } catch (err: any) {
+        await this.sendReply(`⚠️ ${escapeHtml(err.message)}`, replyToMessageId);
+      }
+      return;
+    }
+
+    if (!trimmed || lower === 'status' || lower === 'agents' || lower === 'help') {
+      channelStore.ensureMain();
+      const channels = channelStore.listChannels();
+      const status = channelStore.getStatus('main');
+      const agents = channelStore.listAgents('main');
       const lines = agents.map(
         (a) => `• <b>${escapeHtml(a.name)}</b> — ${escapeHtml(a.bio)}\n  <i>${escapeHtml(a.model)}</i> · <code>${escapeHtml(a.dir)}</code>`
       );
+      const chList = channels
+        .map((c) => `• <code>#${escapeHtml(c.code)}</code> — ${escapeHtml(c.purpose)}`)
+        .join('\n');
       await this.sendReply(
-        `📡 <b>Agent Channel</b>\n` +
-          `Created: ${escapeHtml(status.createdAt || '')} by ${escapeHtml(status.createdBy || '')}\n` +
-          `Agents: ${status.agentCount} · Messages: ${status.messageCount}\n\n` +
-          (lines.length ? lines.join('\n') : '<i>No agents registered.</i>') +
-          `\n\n<i>Post: <code>/channel hello team</code></i>`,
+        `📡 <b>Channels</b>\n` +
+          `Human: <b>${escapeHtml(humanName)}</b>\n` +
+          (chList || '<i>No channels</i>') +
+          `\n\n<b>#main</b> — ${status.agentCount} agents · ${status.messageCount} msgs\n` +
+          (lines.length ? lines.join('\n') : '<i>No agents on #main.</i>') +
+          `\n\n<i>Post to #main: <code>/channel hello</code> · Rename: <code>/channel name YourName</code></i>`,
         replyToMessageId
       );
       return;
     }
 
-    if (!channelStore.exists()) {
+    channelStore.ensureMain();
+    if (!channelStore.exists('main')) {
       await this.sendReply(
         `📡 <b>No channel exists.</b>\nCreate one first: <code>agent-notify channel create</code>`,
         replyToMessageId
@@ -756,14 +783,17 @@ Here are the commands you can use anytime:
     }
 
     try {
-      const msg = channelStore.postMessage({
-        from: CHANNEL_HUMAN_NAME,
+      const msg = channelStore.postMessage('main', {
+        from: getHumanName(),
         body: trimmed,
         kind: 'say',
         requireRegistered: false,
       });
-      await relayChannelMessage(msg);
-      await this.sendReply(`✓ Posted to channel as <b>${CHANNEL_HUMAN_NAME}</b>`, replyToMessageId);
+      await relayChannelMessage(msg, 'main');
+      await this.sendReply(
+        `✓ Posted to <code>#main</code> as <b>${escapeHtml(getHumanName())}</b>`,
+        replyToMessageId
+      );
     } catch (err: any) {
       await this.sendReply(`⚠️ ${escapeHtml(err.message)}`, replyToMessageId);
     }
