@@ -62,6 +62,8 @@ const dom = {
   channelMoreMenu: document.getElementById('channelMoreMenu'),
   channelMoreBtn: document.getElementById('channelMoreBtn'),
   channelMoreDropdown: document.getElementById('channelMoreDropdown'),
+  channelDeleteSep: document.getElementById('channelDeleteSep'),
+  channelDeleteBtn: document.getElementById('channelDeleteBtn'),
   channelComposeForm: document.getElementById('channelComposeForm'),
   channelComposeInput: document.getElementById('channelComposeInput'),
   channelComposeBtn: document.getElementById('channelComposeBtn'),
@@ -1191,6 +1193,16 @@ function renderChannel() {
   document.querySelectorAll('#channelMoreDropdown [data-archive-action]').forEach((btn) => {
     btn.disabled = !status.exists;
   });
+  const canDelete = Boolean(status.exists && status.deletable !== false && code !== 'main');
+  if (dom.channelDeleteBtn) {
+    dom.channelDeleteBtn.hidden = !canDelete;
+    dom.channelDeleteBtn.disabled = !canDelete;
+    dom.channelDeleteBtn.setAttribute('data-code', code);
+    dom.channelDeleteBtn.textContent = `Delete #${code}`;
+  }
+  if (dom.channelDeleteSep) {
+    dom.channelDeleteSep.hidden = !canDelete;
+  }
   if (dom.channelRosterToggleBtn) {
     const isMobile = window.matchMedia('(max-width: 768px)').matches;
     const isCollapsed = dom.channelRoster?.classList.contains('roster-collapsed');
@@ -1312,8 +1324,26 @@ async function archiveChannelHistory(clearAfter) {
   showToast(
     clearAfter
       ? `Cleared #${code}: ${data.messageCount || 0} msg(s) · ${data.agentCount || 0} agent(s)`
-      : `Archived #${code}: ${data.messageCount || 0} msg(s) · ${data.agentCount || 0} agent(s) (roster reset)`
+      : `Archived #${code}: ${data.messageCount || 0} msg(s) · live chat kept`
   );
+  if (data.filename) {
+    state.archives.selected = data.filename;
+  }
+}
+
+async function deleteChannel(channelCode) {
+  const code = channelCode || state.channel.activeCode || 'main';
+  const res = await fetch(`/api/channel?code=${encodeURIComponent(code)}`, {
+    method: 'DELETE',
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+  state.channel.activeCode = 'main';
+  state.channel.filterAgent = '';
+  if (data.snapshot) applyChannelSnapshot(data.snapshot);
+  else await fetchChannel('main');
+  renderChannel();
+  showToast(`Deleted #${code} (archived)`);
   if (data.filename) {
     state.archives.selected = data.filename;
   }
@@ -1578,6 +1608,23 @@ function initEventListeners() {
           const isCollapsed = dom.channelRoster?.classList.contains('roster-collapsed');
           const count = state.channel.agents.length;
           dom.channelRosterToggleBtn.textContent = `${isCollapsed ? 'Show' : 'Hide'} Agents (${count})`;
+        }
+        return;
+      }
+      const delBtn = e.target.closest('#channelDeleteBtn');
+      if (delBtn && !delBtn.disabled) {
+        closeChannelMenu();
+        const channelCode = delBtn.getAttribute('data-code') || state.channel.activeCode || '';
+        if (!channelCode || channelCode === 'main') return;
+        const ok = confirm(`Delete channel #${channelCode}?\n\nThe full channel will be archived before deletion. This cannot be undone.`);
+        if (!ok) return;
+        try {
+          delBtn.disabled = true;
+          await deleteChannel(channelCode);
+        } catch (err) {
+          showToast(err.message || 'Failed to delete channel');
+        } finally {
+          delBtn.disabled = false;
         }
         return;
       }

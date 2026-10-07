@@ -7,6 +7,7 @@ import { messageStore } from './store.js';
 import { channelStore } from './channel_store.js';
 import {
   relayChannelMessage,
+  relayChannelDeleted,
   relayHistoryArchived,
   relayHistoryCleared,
 } from './channel_relay.js';
@@ -365,6 +366,48 @@ export function createServer(): http.Server {
         await relayChannelMessage(msg, code);
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ success: true, message: msg, snapshot: channelStore.getSnapshot(code) }));
+        return;
+      } catch (err: any) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: err.message }));
+        return;
+      }
+    }
+
+    // API: DELETE /api/channel?code= — delete a non-main channel (archives first)
+    if (pathname === '/api/channel' && req.method === 'DELETE') {
+      try {
+        const queryCode = parsedUrl.searchParams.get('code');
+        let body: any = {};
+        if (!queryCode) {
+          body = await parseJsonBody(req).catch(() => ({}));
+        }
+        const code = (queryCode || body.code || '').trim();
+        if (!code) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Missing channel code' }));
+          return;
+        }
+        if (code === MAIN_CHANNEL_CODE) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Channel "main" cannot be deleted.' }));
+          return;
+        }
+        if (!channelStore.exists(code)) {
+          res.writeHead(404, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: `Channel #${code} not found` }));
+          return;
+        }
+        const result = channelStore.deleteChannel(code);
+        await relayChannelDeleted(result.code, result.archivePath);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(
+          JSON.stringify({
+            success: true,
+            ...result,
+            snapshot: channelStore.getSnapshot(MAIN_CHANNEL_CODE),
+          })
+        );
         return;
       } catch (err: any) {
         res.writeHead(500, { 'Content-Type': 'application/json' });

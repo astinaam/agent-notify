@@ -1578,6 +1578,15 @@ body.drawer-open .mobile-overlay {
   cursor: default;
 }
 
+.channel-more-dropdown button.btn-menu-danger {
+  color: #f87171;
+}
+
+.channel-more-dropdown button.btn-menu-danger:hover:not(:disabled) {
+  background: rgba(248, 113, 113, 0.14);
+  color: #ef4444;
+}
+
 .channel-more-sep {
   height: 1px;
   margin: 4px 6px;
