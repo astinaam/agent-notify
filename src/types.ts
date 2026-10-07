@@ -140,3 +140,52 @@ export interface NetworkAddresses {
   tailscaleUrl?: string;
   localhostUrl: string;
 }
+
+/** Fixed display name for the human participant in the agent channel. */
+export const CHANNEL_HUMAN_NAME = 'Human';
+
+export type ChannelMessageKind = 'say' | 'dm' | 'system';
+
+export interface ChannelAgent {
+  name: string;
+  bio: string;
+  model: string;
+  dir: string;
+  registeredAt: string;
+  updatedAt: string;
+  lastSeenAt: string;
+}
+
+export interface ChannelMeta {
+  createdAt: string;
+  createdBy: string;
+}
+
+export interface ChannelState {
+  meta: ChannelMeta;
+  agents: Record<string, ChannelAgent>;
+}
+
+export interface ChannelMessage {
+  id: string;
+  from: string;
+  to: string | null;
+  body: string;
+  kind: ChannelMessageKind;
+  createdAt: string;
+}
+
+export interface ChannelStatus {
+  exists: boolean;
+  createdAt?: string;
+  createdBy?: string;
+  agentCount: number;
+  messageCount: number;
+}
+
+export interface ChannelArchiveInfo {
+  filename: string;
+  path: string;
+  archivedAt: string;
+  messageCount: number;
+}

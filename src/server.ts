@@ -4,12 +4,15 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { messageStore } from './store.js';
+import { channelStore } from './channel_store.js';
+import { relayChannelMessage } from './channel_relay.js';
 import { getNetworkAddresses } from './network.js';
 import { resolveConfig, getConfigDir } from './config.js';
 import { getSystemMetrics, startMonitorService } from './monitor.js';
 import { startBotListener, stopBotListener } from './bot_listener.js';
 import { metricsStore } from './metrics_store.js';
 import type { NetworkAddresses } from './types.js';
+import { CHANNEL_HUMAN_NAME } from './types.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -212,6 +215,46 @@ export function createServer(): http.Server {
       return;
     }
 
+    // API: GET /api/channel
+    if (pathname === '/api/channel' && req.method === 'GET') {
+      const snapshot = channelStore.getSnapshot();
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(snapshot));
+      return;
+    }
+
+    // API: POST /api/channel/say — human compose from Portal
+    if (pathname === '/api/channel/say' && req.method === 'POST') {
+      try {
+        const body = await parseJsonBody(req);
+        const text = typeof body.text === 'string' ? body.text.trim() : '';
+        if (!text) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Missing "text" field' }));
+          return;
+        }
+        if (!channelStore.exists()) {
+          res.writeHead(404, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'No channel exists' }));
+          return;
+        }
+        const msg = channelStore.postMessage({
+          from: CHANNEL_HUMAN_NAME,
+          body: text,
+          kind: 'say',
+          requireRegistered: false,
+        });
+        await relayChannelMessage(msg);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: true, message: msg }));
+        return;
+      } catch (err: any) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: err.message }));
+        return;
+      }
+    }
+
     // SSE: GET /api/events (Real-Time Live Updates)
     if (pathname === '/api/events' && req.method === 'GET') {
       res.writeHead(200, {
@@ -233,9 +276,14 @@ export function createServer(): http.Server {
         res.write(`event: message_deleted\ndata: ${JSON.stringify({ id })}\n\n`);
       };
 
+      const onChannelChanged = () => {
+        res.write(`event: channel_changed\ndata: ${JSON.stringify(channelStore.getSnapshot())}\n\n`);
+      };
+
       messageStore.on('message_added', onAdded);
       messageStore.on('message_updated', onUpdated);
       messageStore.on('message_deleted', onDeleted);
+      channelStore.on('channel_changed', onChannelChanged);
 
       const timer = setInterval(() => {
         res.write(': heartbeat\n\n');
@@ -246,6 +294,7 @@ export function createServer(): http.Server {
         messageStore.off('message_added', onAdded);
         messageStore.off('message_updated', onUpdated);
         messageStore.off('message_deleted', onDeleted);
+        channelStore.off('channel_changed', onChannelChanged);
       });
       return;
     }

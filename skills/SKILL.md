@@ -8,10 +8,11 @@ description: >-
 
 `agent-notify` allows AI agents and users to communicate bidirectionally:
 - **Outbound**: Push alerts to Telegram, upload files/reports, and request approvals via interactive buttons.
-- **Inbound (24/7 Continuous)**: Send commands (`/cursor <prompt>`, `/task <prompt>`, `/agents`, `/cancel`, `/memory`, `/prompt`, `/dir`, `/status`, `/top`, `/logs`, `/sh <cmd>`) or text from Telegram anytime, running on an always-on auto-restarting background systemd service.
+- **Inbound (24/7 Continuous)**: Send commands (`/cursor <prompt>`, `/task <prompt>`, `/agents`, `/cancel`, `/memory`, `/prompt`, `/dir`, `/status`, `/top`, `/logs`, `/sh <cmd>`, `/channel`) or text from Telegram anytime, running on an always-on auto-restarting background systemd service.
 - **Live Progress Tickers**: When agents run, the bot provides dynamic in-place updates (animated spinner, elapsed time, host resource load, live stream activity, and inline `🛑 Cancel` button).
 - **Persistent Memory & System Prompt**: Markdown-based persistent memory (`memory.md`) and custom system instructions (`system_prompt.md`), automatically plugged into `/cursor` and `/task` agent executions.
 - **Web UI Dashboard**: Real-time message stream and monitor accessible over Local LAN and Tailscale.
+- **Agent Channel**: For agent-to-agent chat (shared room + DMs) with Telegram relay and Portal Channel tab, see the companion **`agent-channel`** skill (`agent-notify channel …`).
 
 ---
 

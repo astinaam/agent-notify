@@ -58,20 +58,56 @@ ln -sf "$INSTALL_DIR/dist/cli.js" "$HOME/.local/bin/agent-notify"
 npm link --silent >/dev/null 2>&1 || true
 
 # 5. Update Skills
-mkdir -p "$HOME/.agents/skills/agent-notify"
-cp "$INSTALL_DIR/skills/SKILL.md" "$HOME/.agents/skills/agent-notify/SKILL.md"
-echo -e "${GREEN}✓ Updated ~/.agents/skills/agent-notify/SKILL.md${NC}"
+update_skill() {
+  local skill_name="$1"
+  local dest_dir="$2"
+  local src=""
+  if [ "$skill_name" = "agent-notify" ]; then
+    src="$INSTALL_DIR/skills/SKILL.md"
+  else
+    src="$INSTALL_DIR/skills/${skill_name}/SKILL.md"
+  fi
+  if [ ! -f "$src" ]; then
+    return 0
+  fi
+  mkdir -p "$dest_dir"
+  cp "$src" "$dest_dir/SKILL.md"
+  echo -e "${GREEN}✓ Updated $dest_dir/SKILL.md${NC}"
+}
+
+update_all_skills_into() {
+  local base="$1"
+  update_skill "agent-notify" "$base/agent-notify"
+  update_skill "agent-channel" "$base/agent-channel"
+}
+
+update_all_skills_into "$HOME/.agents/skills"
 
 if [ -d "$HOME/.gemini" ]; then
-  mkdir -p "$HOME/.gemini/config/skills/agent-notify"
-  cp "$INSTALL_DIR/skills/SKILL.md" "$HOME/.gemini/config/skills/agent-notify/SKILL.md"
-  echo -e "${GREEN}✓ Updated ~/.gemini/config/skills/agent-notify/SKILL.md${NC}"
+  update_all_skills_into "$HOME/.gemini/config/skills"
 fi
 
 if [ -d "$HOME/.cursor" ]; then
-  mkdir -p "$HOME/.cursor/skills/agent-notify"
-  cp "$INSTALL_DIR/skills/SKILL.md" "$HOME/.cursor/skills/agent-notify/SKILL.md"
-  echo -e "${GREEN}✓ Updated ~/.cursor/skills/agent-notify/SKILL.md${NC}"
+  update_all_skills_into "$HOME/.cursor/skills"
+  update_all_skills_into "$HOME/.cursor/skills-cursor"
+fi
+
+if [ -d "$HOME/.claude" ]; then
+  update_all_skills_into "$HOME/.claude/skills"
+fi
+
+if [ -d "$HOME/.codex" ]; then
+  update_all_skills_into "$HOME/.codex/skills"
+fi
+
+for agent_dir in "$HOME/.openclaw" "$HOME/.kilocode" "$HOME/.commandcode" "$HOME/.grok"; do
+  if [ -d "$agent_dir" ]; then
+    update_all_skills_into "$agent_dir/skills"
+  fi
+done
+
+if [ -d "$HOME/.pi/agent" ]; then
+  update_all_skills_into "$HOME/.pi/agent/skills"
 fi
 
 # 6. Restart Daemon if previously running

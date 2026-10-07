@@ -24,6 +24,17 @@ import {
   getSystemPromptFilePath,
 } from './memory.js';
 import type { NotificationLevel, ParseMode } from './types.js';
+import { CHANNEL_HUMAN_NAME } from './types.js';
+import { channelStore } from './channel_store.js';
+import {
+  relayChannelCreated,
+  relayChannelDeleted,
+  relayAgentRegistered,
+  relayAgentUpdated,
+  relayAgentUnregistered,
+  relayChannelMessage,
+  relayHistoryCleared,
+} from './channel_relay.js';
 
 async function readStdin(): Promise<string> {
   if (process.stdin.isTTY) {
@@ -644,6 +655,307 @@ configCommand
   .description('Print configuration file path')
   .action(() => {
     console.log(getConfigPath());
+  });
+
+// Command: channel — agent communication channel
+const channelCommand = program
+  .command('channel')
+  .description('Agent communication channel (register, chat, history, shared room + DMs)');
+
+channelCommand
+  .command('create')
+  .description('Create the single persistent agent channel')
+  .option('--by <name>', 'Creator label', CHANNEL_HUMAN_NAME)
+  .action(async (opts) => {
+    try {
+      const state = channelStore.create(opts.by);
+      await relayChannelCreated(state.meta.createdBy);
+      console.log(pc.green(`✓ Channel created by ${state.meta.createdBy} at ${state.meta.createdAt}`));
+    } catch (err: any) {
+      console.error(pc.red(`✗ ${err.message}`));
+      process.exit(1);
+    }
+  });
+
+channelCommand
+  .command('status')
+  .description('Show channel status')
+  .option('--json', 'Output as JSON')
+  .action((opts) => {
+    const status = channelStore.getStatus();
+    if (opts.json) {
+      console.log(JSON.stringify(status, null, 2));
+      return;
+    }
+    if (!status.exists) {
+      console.log(pc.yellow('No channel exists. Create with: agent-notify channel create'));
+      return;
+    }
+    console.log(pc.cyan('📡 Agent Channel'));
+    console.log(`  Created:  ${status.createdAt} by ${status.createdBy}`);
+    console.log(`  Agents:   ${status.agentCount}`);
+    console.log(`  Messages: ${status.messageCount}`);
+  });
+
+channelCommand
+  .command('delete')
+  .description('Delete the channel (roster + live messages; archives kept unless --purge-archives)')
+  .option('--purge-archives', 'Also delete archive files')
+  .action(async (opts) => {
+    try {
+      channelStore.delete({ purgeArchives: Boolean(opts.purgeArchives) });
+      await relayChannelDeleted();
+      console.log(pc.green('✓ Channel deleted'));
+    } catch (err: any) {
+      console.error(pc.red(`✗ ${err.message}`));
+      process.exit(1);
+    }
+  });
+
+channelCommand
+  .command('register')
+  .description('Register an agent on the channel')
+  .requiredOption('-n, --name <name>', 'Unique agent name')
+  .requiredOption('-b, --bio <bio>', 'Short bio / current status')
+  .option('-m, --model <model>', 'Model name', 'unknown')
+  .option('-d, --dir <path>', 'Working directory (default: cwd)')
+  .action(async (opts) => {
+    try {
+      const agent = channelStore.register({
+        name: opts.name,
+        bio: opts.bio,
+        model: opts.model,
+        dir: opts.dir,
+      });
+      await relayAgentRegistered(agent);
+      console.log(pc.green(`✓ Registered as ${agent.name}`));
+      console.log(pc.dim(`  bio:   ${agent.bio}`));
+      console.log(pc.dim(`  model: ${agent.model}`));
+      console.log(pc.dim(`  dir:   ${agent.dir}`));
+    } catch (err: any) {
+      console.error(pc.red(`✗ ${err.message}`));
+      process.exit(1);
+    }
+  });
+
+channelCommand
+  .command('update')
+  .description('Update an agent bio / model / dir')
+  .requiredOption('-n, --name <name>', 'Registered agent name')
+  .option('-b, --bio <bio>', 'Updated bio / status')
+  .option('-m, --model <model>', 'Updated model name')
+  .option('-d, --dir <path>', 'Updated working directory')
+  .action(async (opts) => {
+    try {
+      if (opts.bio === undefined && opts.model === undefined && opts.dir === undefined) {
+        console.error(pc.red('✗ Provide at least one of --bio, --model, --dir'));
+        process.exit(1);
+      }
+      const agent = channelStore.update({
+        name: opts.name,
+        bio: opts.bio,
+        model: opts.model,
+        dir: opts.dir,
+      });
+      await relayAgentUpdated(agent);
+      console.log(pc.green(`✓ Updated ${agent.name}`));
+      console.log(pc.dim(`  bio:   ${agent.bio}`));
+      console.log(pc.dim(`  model: ${agent.model}`));
+      console.log(pc.dim(`  dir:   ${agent.dir}`));
+    } catch (err: any) {
+      console.error(pc.red(`✗ ${err.message}`));
+      process.exit(1);
+    }
+  });
+
+channelCommand
+  .command('unregister')
+  .description('Remove an agent from the channel roster')
+  .requiredOption('-n, --name <name>', 'Registered agent name')
+  .action(async (opts) => {
+    try {
+      const agent = channelStore.unregister(opts.name);
+      await relayAgentUnregistered(agent);
+      console.log(pc.green(`✓ Unregistered ${agent.name}`));
+    } catch (err: any) {
+      console.error(pc.red(`✗ ${err.message}`));
+      process.exit(1);
+    }
+  });
+
+channelCommand
+  .command('agents')
+  .description('List registered agents with bios and metadata')
+  .option('--json', 'Output as JSON')
+  .action((opts) => {
+    try {
+      channelStore.requireChannel();
+      const agents = channelStore.listAgents();
+      if (opts.json) {
+        console.log(JSON.stringify(agents, null, 2));
+        return;
+      }
+      if (agents.length === 0) {
+        console.log(pc.yellow('No agents registered yet.'));
+        return;
+      }
+      for (const a of agents) {
+        console.log(pc.cyan(`● ${a.name}`));
+        console.log(`  bio:   ${a.bio}`);
+        console.log(`  model: ${a.model}`);
+        console.log(`  dir:   ${a.dir}`);
+        console.log(`  updated: ${a.updatedAt}`);
+        console.log('');
+      }
+    } catch (err: any) {
+      console.error(pc.red(`✗ ${err.message}`));
+      process.exit(1);
+    }
+  });
+
+channelCommand
+  .command('whoami')
+  .description('Show one registered agent record')
+  .requiredOption('-n, --name <name>', 'Agent name')
+  .option('--json', 'Output as JSON')
+  .action((opts) => {
+    try {
+      channelStore.requireChannel();
+      const agent = channelStore.findAgent(opts.name);
+      if (!agent) {
+        console.error(pc.red(`✗ Agent "${opts.name}" is not registered.`));
+        process.exit(1);
+      }
+      if (opts.json) {
+        console.log(JSON.stringify(agent, null, 2));
+        return;
+      }
+      console.log(pc.cyan(`● ${agent.name}`));
+      console.log(`  bio:   ${agent.bio}`);
+      console.log(`  model: ${agent.model}`);
+      console.log(`  dir:   ${agent.dir}`);
+      console.log(`  registered: ${agent.registeredAt}`);
+      console.log(`  updated:    ${agent.updatedAt}`);
+      console.log(`  lastSeen:   ${agent.lastSeenAt}`);
+    } catch (err: any) {
+      console.error(pc.red(`✗ ${err.message}`));
+      process.exit(1);
+    }
+  });
+
+channelCommand
+  .command('say [message...]')
+  .description('Post a broadcast message to the shared channel')
+  .requiredOption('-f, --from <name>', 'Sender agent name (must be registered)')
+  .action(async (messageParts, opts) => {
+    try {
+      let body = (messageParts || []).join(' ').trim();
+      if (!body) body = await readStdin();
+      if (!body) {
+        console.error(pc.red('✗ Message required (argument or stdin)'));
+        process.exit(1);
+      }
+      const msg = channelStore.postMessage({ from: opts.from, body, kind: 'say' });
+      await relayChannelMessage(msg);
+      console.log(pc.green(`✓ Posted as ${msg.from}`));
+    } catch (err: any) {
+      console.error(pc.red(`✗ ${err.message}`));
+      process.exit(1);
+    }
+  });
+
+channelCommand
+  .command('dm [message...]')
+  .description('Send a direct message to another agent (still relayed to Telegram/Portal)')
+  .requiredOption('-f, --from <name>', 'Sender agent name')
+  .requiredOption('--to <name>', 'Recipient agent name (use --to; -t is reserved for --token)')
+  .action(async (messageParts, opts) => {
+    try {
+      let body = (messageParts || []).join(' ').trim();
+      if (!body) body = await readStdin();
+      if (!body) {
+        console.error(pc.red('✗ Message required (argument or stdin)'));
+        process.exit(1);
+      }
+      const msg = channelStore.postMessage({ from: opts.from, to: opts.to, body, kind: 'dm' });
+      await relayChannelMessage(msg);
+      console.log(pc.green(`✓ DM ${msg.from} → ${msg.to}`));
+    } catch (err: any) {
+      console.error(pc.red(`✗ ${err.message}`));
+      process.exit(1);
+    }
+  });
+
+channelCommand
+  .command('history')
+  .description('Read conversation history')
+  .option('-n, --limit <n>', 'Max messages (most recent)', (v) => Number.parseInt(v, 10))
+  .option('-f, --from <name>', 'Filter by sender')
+  .option('--dm <name>', 'Show DMs involving this agent')
+  .option('--json', 'Output as JSON')
+  .action((opts) => {
+    try {
+      channelStore.requireChannel();
+      const messages = channelStore.getHistory({
+        limit: opts.limit,
+        from: opts.from,
+        dmWith: opts.dm,
+      });
+      if (opts.json) {
+        console.log(JSON.stringify(messages, null, 2));
+        return;
+      }
+      if (messages.length === 0) {
+        console.log(pc.yellow('No messages yet.'));
+        return;
+      }
+      for (const m of messages) {
+        const ts = m.createdAt.replace('T', ' ').replace(/\.\d+Z$/, 'Z');
+        if (m.kind === 'dm') {
+          console.log(pc.dim(`[${ts}]`) + ` ${pc.magenta('DM')} ${pc.cyan(m.from)} → ${pc.cyan(m.to || '?')}: ${m.body}`);
+        } else {
+          console.log(pc.dim(`[${ts}]`) + ` ${pc.cyan(m.from)}: ${m.body}`);
+        }
+      }
+    } catch (err: any) {
+      console.error(pc.red(`✗ ${err.message}`));
+      process.exit(1);
+    }
+  });
+
+channelCommand
+  .command('clear')
+  .description('Archive then clear live conversation history (do not use unless asked)')
+  .action(async () => {
+    try {
+      const result = channelStore.clear();
+      await relayHistoryCleared(result.archivePath, result.messageCount);
+      console.log(pc.green(`✓ Cleared ${result.messageCount} message(s)`));
+      console.log(pc.dim(`  Archive: ${result.archivePath}`));
+    } catch (err: any) {
+      console.error(pc.red(`✗ ${err.message}`));
+      process.exit(1);
+    }
+  });
+
+channelCommand
+  .command('archives')
+  .description('List archived conversation files')
+  .option('--json', 'Output as JSON')
+  .action((opts) => {
+    const archives = channelStore.listArchives();
+    if (opts.json) {
+      console.log(JSON.stringify(archives, null, 2));
+      return;
+    }
+    if (archives.length === 0) {
+      console.log(pc.yellow('No archives yet.'));
+      return;
+    }
+    for (const a of archives) {
+      console.log(`${pc.cyan(a.filename)}  ${a.messageCount} msgs  ${a.archivedAt}`);
+      console.log(pc.dim(`  ${a.path}`));
+    }
   });
 
 // Command: memory

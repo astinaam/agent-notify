@@ -20,7 +20,10 @@ import {
   clipPrompt,
 } from './memory.js';
 import { taskManager } from './task_tracker.js';
+import { channelStore } from './channel_store.js';
+import { relayChannelMessage } from './channel_relay.js';
 import type { TelegramConfig, StoredMessage } from './types.js';
+import { CHANNEL_HUMAN_NAME } from './types.js';
 
 const execAsync = promisify(exec);
 
@@ -501,6 +504,12 @@ ${text}`;
           break;
         }
 
+        case '/channel':
+        case '/ch': {
+          await this.handleChannelCommand(args, msg.message_id);
+          break;
+        }
+
         default:
           await this.sendReply(
             `❓ Unknown command: <code>${command}</code>\nType /help for available commands.`,
@@ -572,6 +581,11 @@ Here are the commands you can use anytime:
 • <code>/top</code> — Top CPU/Memory processes
 • <code>/ping</code> — Daemon health check
 • <code>/sh &lt;cmd&gt;</code> — Run shell command on host
+
+📡 <b>Agent Channel:</b>
+• <code>/channel &lt;text&gt;</code> — Post to the agent channel as Human
+• <code>/channel status</code> — Channel roster & status
+• <code>/ch &lt;text&gt;</code> — Short alias for /channel
 
 📜 <b>History & Web UI:</b>
 • <code>/logs [n]</code> — Show recent notifications
@@ -705,6 +719,54 @@ Here are the commands you can use anytime:
     }
     const entry = appendMemory(note, this.config.botListener?.memoryFile);
     await this.sendReply(`💾 <b>Memory Saved!</b>\n\n<code>${escapeHtml(entry)}</code>\n\n<i>This will automatically be plugged into future /cursor and /task agent executions.</i>`, replyToMessageId);
+  }
+
+  private async handleChannelCommand(args: string, replyToMessageId?: number): Promise<void> {
+    const trimmed = (args || '').trim();
+    if (!trimmed || trimmed.toLowerCase() === 'status' || trimmed.toLowerCase() === 'agents') {
+      const status = channelStore.getStatus();
+      if (!status.exists) {
+        await this.sendReply(
+          `📡 <b>No channel yet.</b>\nCreate with: <code>agent-notify channel create</code>\nThen post here with <code>/channel &lt;text&gt;</code>`,
+          replyToMessageId
+        );
+        return;
+      }
+      const agents = channelStore.listAgents();
+      const lines = agents.map(
+        (a) => `• <b>${escapeHtml(a.name)}</b> — ${escapeHtml(a.bio)}\n  <i>${escapeHtml(a.model)}</i> · <code>${escapeHtml(a.dir)}</code>`
+      );
+      await this.sendReply(
+        `📡 <b>Agent Channel</b>\n` +
+          `Created: ${escapeHtml(status.createdAt || '')} by ${escapeHtml(status.createdBy || '')}\n` +
+          `Agents: ${status.agentCount} · Messages: ${status.messageCount}\n\n` +
+          (lines.length ? lines.join('\n') : '<i>No agents registered.</i>') +
+          `\n\n<i>Post: <code>/channel hello team</code></i>`,
+        replyToMessageId
+      );
+      return;
+    }
+
+    if (!channelStore.exists()) {
+      await this.sendReply(
+        `📡 <b>No channel exists.</b>\nCreate one first: <code>agent-notify channel create</code>`,
+        replyToMessageId
+      );
+      return;
+    }
+
+    try {
+      const msg = channelStore.postMessage({
+        from: CHANNEL_HUMAN_NAME,
+        body: trimmed,
+        kind: 'say',
+        requireRegistered: false,
+      });
+      await relayChannelMessage(msg);
+      await this.sendReply(`✓ Posted to channel as <b>${CHANNEL_HUMAN_NAME}</b>`, replyToMessageId);
+    } catch (err: any) {
+      await this.sendReply(`⚠️ ${escapeHtml(err.message)}`, replyToMessageId);
+    }
   }
 
   private async handleWorkspaceDir(newDir?: string, replyToMessageId?: number): Promise<void> {

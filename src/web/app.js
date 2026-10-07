@@ -1,7 +1,7 @@
 // agent-notify Web Dashboard — Messages & System Metrics Controller
 
 const state = {
-  activeView: 'messages', // 'messages' | 'system'
+  activeView: 'messages', // 'messages' | 'channel' | 'system'
   messages: [],
   agents: [],
   stats: null,
@@ -15,17 +15,35 @@ const state = {
   historyRange: '24h',
   historyData: null,
   theme: localStorage.getItem('agent_notify_theme') || 'dark',
+  channel: {
+    status: { exists: false, agentCount: 0, messageCount: 0 },
+    agents: [],
+    messages: [],
+    filterAgent: '',
+  },
 };
 
 // DOM Elements
 const dom = {
   body: document.body,
   tabMessages: document.getElementById('tabMessages'),
+  tabChannel: document.getElementById('tabChannel'),
   tabSystem: document.getElementById('tabSystem'),
   messagesView: document.getElementById('messagesView'),
+  channelView: document.getElementById('channelView'),
   systemView: document.getElementById('systemView'),
   sidebar: document.getElementById('sidebar'),
   searchContainer: document.getElementById('searchHeaderContainer'),
+  channelAgentCount: document.getElementById('channelAgentCount'),
+  channelStatusPill: document.getElementById('channelStatusPill'),
+  channelAgentList: document.getElementById('channelAgentList'),
+  channelMessages: document.getElementById('channelMessages'),
+  channelEmpty: document.getElementById('channelEmpty'),
+  channelChatSub: document.getElementById('channelChatSub'),
+  channelRefreshBtn: document.getElementById('channelRefreshBtn'),
+  channelComposeForm: document.getElementById('channelComposeForm'),
+  channelComposeInput: document.getElementById('channelComposeInput'),
+  channelComposeBtn: document.getElementById('channelComposeBtn'),
   themeToggle: document.getElementById('themeToggle'),
   themeIcon: document.getElementById('themeIcon'),
   feedContainer: document.getElementById('feedContainer'),
@@ -92,23 +110,27 @@ function initTheme() {
   }
 }
 
-// Switch View (Messages <-> System)
+// Switch View (Messages / Channel / System)
 function switchView(viewName) {
   state.activeView = viewName;
 
+  dom.tabMessages.classList.toggle('active', viewName === 'messages');
+  if (dom.tabChannel) dom.tabChannel.classList.toggle('active', viewName === 'channel');
+  dom.tabSystem.classList.toggle('active', viewName === 'system');
+
+  dom.messagesView.style.display = viewName === 'messages' ? 'flex' : 'none';
+  if (dom.channelView) dom.channelView.style.display = viewName === 'channel' ? 'flex' : 'none';
+  dom.systemView.style.display = viewName === 'system' ? 'flex' : 'none';
+
   if (viewName === 'messages') {
-    dom.tabMessages.classList.add('active');
-    dom.tabSystem.classList.remove('active');
-    dom.messagesView.style.display = 'flex';
-    dom.systemView.style.display = 'none';
     dom.sidebar.classList.remove('hidden');
     dom.searchContainer.style.display = 'flex';
     fetchMessages();
+  } else if (viewName === 'channel') {
+    dom.sidebar.classList.add('hidden');
+    dom.searchContainer.style.display = 'none';
+    fetchChannel();
   } else {
-    dom.tabMessages.classList.remove('active');
-    dom.tabSystem.classList.add('active');
-    dom.messagesView.style.display = 'none';
-    dom.systemView.style.display = 'flex';
     dom.sidebar.classList.add('hidden');
     dom.searchContainer.style.display = 'none';
     fetchSystemMetrics();
@@ -801,6 +823,122 @@ function checkUrlAnchorHighlight() {
   }
 }
 
+async function fetchChannel() {
+  try {
+    const res = await fetch('/api/channel');
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    state.channel.status = data.status || { exists: false, agentCount: 0, messageCount: 0 };
+    state.channel.agents = data.agents || [];
+    state.channel.messages = data.messages || [];
+    renderChannel();
+  } catch (err) {
+    if (dom.channelMessages) {
+      dom.channelMessages.innerHTML = `<div class="channel-empty"><div class="empty-title">Failed to load channel</div><div class="empty-desc">${escapeHtml(err.message)}</div></div>`;
+    }
+  }
+}
+
+function renderChannel() {
+  if (!dom.channelMessages) return;
+  const { status, agents, messages, filterAgent } = state.channel;
+
+  if (dom.channelAgentCount) dom.channelAgentCount.textContent = String(agents.length);
+  if (dom.channelStatusPill) {
+    if (status.exists) {
+      dom.channelStatusPill.classList.add('active');
+      dom.channelStatusPill.textContent = `${status.agentCount} agents · ${status.messageCount} msgs`;
+    } else {
+      dom.channelStatusPill.classList.remove('active');
+      dom.channelStatusPill.textContent = 'No channel';
+    }
+  }
+  if (dom.channelChatSub) {
+    dom.channelChatSub.textContent = status.exists
+      ? `Created ${status.createdAt || ''} by ${status.createdBy || 'Human'}`
+      : 'Shared room + DMs (all relayed to Telegram)';
+  }
+
+  if (dom.channelAgentList) {
+    if (!agents.length) {
+      dom.channelAgentList.innerHTML = '<div class="channel-empty-roster">No agents registered</div>';
+    } else {
+      dom.channelAgentList.innerHTML = [
+        `<button class="channel-agent-card ${!filterAgent ? 'active' : ''}" data-agent="">
+          <span class="channel-agent-name">All agents</span>
+          <span class="channel-agent-bio">Show full channel history</span>
+        </button>`,
+        ...agents.map((a) => `
+          <button class="channel-agent-card ${filterAgent === a.name ? 'active' : ''}" data-agent="${escapeHtml(a.name)}">
+            <span class="channel-agent-name">${escapeHtml(a.name)}</span>
+            <span class="channel-agent-bio">${escapeHtml(a.bio || '')}</span>
+            <span class="channel-agent-meta">
+              <span>${escapeHtml(a.model || 'unknown')}</span>
+              <span title="${escapeHtml(a.dir || '')}">${escapeHtml(a.dir || '')}</span>
+            </span>
+          </button>
+        `),
+      ].join('');
+    }
+  }
+
+  let visible = messages;
+  if (filterAgent) {
+    const f = filterAgent.toLowerCase();
+    visible = messages.filter(
+      (m) =>
+        m.from.toLowerCase() === f ||
+        (m.to && m.to.toLowerCase() === f)
+    );
+  }
+
+  if (!status.exists) {
+    dom.channelMessages.innerHTML = `<div class="channel-empty"><div class="empty-title">No channel yet</div><div class="empty-desc">Create with <code>agent-notify channel create</code></div></div>`;
+    return;
+  }
+
+  if (!visible.length) {
+    dom.channelMessages.innerHTML = `<div class="channel-empty"><div class="empty-title">No messages yet</div><div class="empty-desc">Agents can <code>channel say</code> / <code>channel dm</code>, or post here as Human.</div></div>`;
+    return;
+  }
+
+  const wasNearBottom =
+    dom.channelMessages.scrollHeight - dom.channelMessages.scrollTop - dom.channelMessages.clientHeight < 80;
+
+  dom.channelMessages.innerHTML = visible
+    .map((m) => {
+      const isHuman = (m.from || '').toLowerCase() === 'human';
+      const isDm = m.kind === 'dm';
+      const ts = (m.createdAt || '').replace('T', ' ').replace(/\.\d+Z$/, 'Z');
+      return `
+        <div class="channel-bubble ${isHuman ? 'is-human' : ''} ${isDm ? 'is-dm' : ''}">
+          <div class="channel-bubble-meta">
+            <span class="channel-bubble-from">${escapeHtml(m.from)}${isDm ? ` → ${escapeHtml(m.to || '?')}` : ''}</span>
+            ${isDm ? '<span class="channel-dm-badge">DM</span>' : ''}
+            <span>${escapeHtml(ts)}</span>
+          </div>
+          <div class="channel-bubble-body">${escapeHtml(m.body || '')}</div>
+        </div>
+      `;
+    })
+    .join('');
+
+  if (wasNearBottom) {
+    dom.channelMessages.scrollTop = dom.channelMessages.scrollHeight;
+  }
+}
+
+async function postChannelMessage(text) {
+  const res = await fetch('/api/channel/say', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+  await fetchChannel();
+}
+
 // Server-Sent Events (SSE) Live Feed Subscription
 function initSSE() {
   const eventSource = new EventSource('/api/events');
@@ -818,13 +956,57 @@ function initSSE() {
     fetchMessages();
     fetchSidebarData();
   });
+
+  eventSource.addEventListener('channel_changed', (e) => {
+    try {
+      const data = JSON.parse(e.data);
+      state.channel.status = data.status || state.channel.status;
+      state.channel.agents = data.agents || [];
+      state.channel.messages = data.messages || [];
+      if (state.activeView === 'channel') renderChannel();
+    } catch {
+      if (state.activeView === 'channel') fetchChannel();
+    }
+  });
 }
 
 // Event Listeners
 function initEventListeners() {
   // Tabs
   dom.tabMessages.addEventListener('click', () => switchView('messages'));
+  if (dom.tabChannel) dom.tabChannel.addEventListener('click', () => switchView('channel'));
   dom.tabSystem.addEventListener('click', () => switchView('system'));
+
+  if (dom.channelRefreshBtn) {
+    dom.channelRefreshBtn.addEventListener('click', () => fetchChannel());
+  }
+
+  if (dom.channelAgentList) {
+    dom.channelAgentList.addEventListener('click', (e) => {
+      const card = e.target.closest('.channel-agent-card');
+      if (!card) return;
+      state.channel.filterAgent = card.getAttribute('data-agent') || '';
+      renderChannel();
+    });
+  }
+
+  if (dom.channelComposeForm) {
+    dom.channelComposeForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const text = (dom.channelComposeInput?.value || '').trim();
+      if (!text) return;
+      try {
+        if (dom.channelComposeBtn) dom.channelComposeBtn.disabled = true;
+        await postChannelMessage(text);
+        if (dom.channelComposeInput) dom.channelComposeInput.value = '';
+        showToast('Posted to channel');
+      } catch (err) {
+        showToast(err.message || 'Failed to post');
+      } finally {
+        if (dom.channelComposeBtn) dom.channelComposeBtn.disabled = false;
+      }
+    });
+  }
 
   // Theme Toggle
   dom.themeToggle.addEventListener('click', () => {

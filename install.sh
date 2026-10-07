@@ -7,7 +7,17 @@ set -e
 # ==============================================================================
 
 REPO_URL="https://github.com/astinaam/agent-notify.git"
-INSTALL_DIR="${AGENT_NOTIFY_DIR:-$HOME/.local/share/agent-notify}"
+# Determine repo directory
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
+if [ -n "$AGENT_NOTIFY_DIR" ] && [ -e "$AGENT_NOTIFY_DIR/.git" ]; then
+  INSTALL_DIR="$AGENT_NOTIFY_DIR"
+elif [ -e "$SCRIPT_DIR/.git" ] && [ -e "$SCRIPT_DIR/package.json" ]; then
+  INSTALL_DIR="$SCRIPT_DIR"
+elif [ -e "$HOME/.local/share/agent-notify/.git" ]; then
+  INSTALL_DIR="$HOME/.local/share/agent-notify"
+else
+  INSTALL_DIR="${AGENT_NOTIFY_DIR:-$HOME/.local/share/agent-notify}"
+fi
 BIN_DIR="$HOME/.local/bin"
 
 # Styling helpers
@@ -41,10 +51,13 @@ if [ "$NODE_VERSION" -lt 18 ]; then
   exit 1
 fi
 
-echo -e "${GREEN}✓ Prerequisites met: Node.js $(node -v), npm $(npm -v), git$(NC)"
+echo -e "${GREEN}✓ Prerequisites met: Node.js $(node -v), npm $(npm -v), git${NC}"
 
 # 2. Clone or Update Repository
-if [ -e "$INSTALL_DIR/.git" ]; then
+if [ "$INSTALL_DIR" = "$SCRIPT_DIR" ]; then
+  echo -e "${CYAN}→ Using local repository at $INSTALL_DIR...${NC}"
+  cd "$INSTALL_DIR"
+elif [ -e "$INSTALL_DIR/.git" ]; then
   echo -e "${CYAN}→ Updating existing repository at $INSTALL_DIR...${NC}"
   cd "$INSTALL_DIR"
   git fetch --all --prune
@@ -74,26 +87,66 @@ npm link --silent >/dev/null 2>&1 || true
 
 echo -e "${GREEN}✓ Binary linked to $BIN_DIR/agent-notify${NC}"
 
-# 5. Install Agent Skills (Always in ~/.agents, and in ~/.gemini & ~/.cursor if available)
+# 5. Install Agent Skills (Always in ~/.agents, and in all active agent harnesses)
 echo -e "${CYAN}→ Installing AI agent skills...${NC}"
 
+install_skill() {
+  local skill_name="$1"
+  local dest_dir="$2"
+  local src=""
+  if [ "$skill_name" = "agent-notify" ]; then
+    src="$INSTALL_DIR/skills/SKILL.md"
+  else
+    src="$INSTALL_DIR/skills/${skill_name}/SKILL.md"
+  fi
+  if [ ! -f "$src" ]; then
+    echo -e "${YELLOW}⚠ Skill source missing: $src${NC}"
+    return 0
+  fi
+  mkdir -p "$dest_dir"
+  cp "$src" "$dest_dir/SKILL.md"
+  echo -e "${GREEN}✓ Installed skill into $dest_dir/SKILL.md${NC}"
+}
+
+install_all_skills_into() {
+  local base="$1"
+  install_skill "agent-notify" "$base/agent-notify"
+  install_skill "agent-channel" "$base/agent-channel"
+}
+
 # 1. Always install into global ~/.agents
-mkdir -p "$HOME/.agents/skills/agent-notify"
-cp "$INSTALL_DIR/skills/SKILL.md" "$HOME/.agents/skills/agent-notify/SKILL.md"
-echo -e "${GREEN}✓ Installed skill into ~/.agents/skills/agent-notify/SKILL.md${NC}"
+install_all_skills_into "$HOME/.agents/skills"
 
 # 2. If .gemini exists, install into Gemini / Antigravity global skill directory
 if [ -d "$HOME/.gemini" ]; then
-  mkdir -p "$HOME/.gemini/config/skills/agent-notify"
-  cp "$INSTALL_DIR/skills/SKILL.md" "$HOME/.gemini/config/skills/agent-notify/SKILL.md"
-  echo -e "${GREEN}✓ Installed skill into ~/.gemini/config/skills/agent-notify/SKILL.md${NC}"
+  install_all_skills_into "$HOME/.gemini/config/skills"
 fi
 
-# 3. If .cursor exists, install into Cursor global skill directory
+# 3. If .cursor exists, install into Cursor global skill directories
 if [ -d "$HOME/.cursor" ]; then
-  mkdir -p "$HOME/.cursor/skills/agent-notify"
-  cp "$INSTALL_DIR/skills/SKILL.md" "$HOME/.cursor/skills/agent-notify/SKILL.md"
-  echo -e "${GREEN}✓ Installed skill into ~/.cursor/skills/agent-notify/SKILL.md${NC}"
+  install_all_skills_into "$HOME/.cursor/skills"
+  install_all_skills_into "$HOME/.cursor/skills-cursor"
+fi
+
+# 4. If .claude exists, install into Claude global skill directory
+if [ -d "$HOME/.claude" ]; then
+  install_all_skills_into "$HOME/.claude/skills"
+fi
+
+# 5. If .codex exists, install into Codex global skill directory
+if [ -d "$HOME/.codex" ]; then
+  install_all_skills_into "$HOME/.codex/skills"
+fi
+
+# 6. Other agent harnesses if present
+for agent_dir in "$HOME/.openclaw" "$HOME/.kilocode" "$HOME/.commandcode" "$HOME/.grok"; do
+  if [ -d "$agent_dir" ]; then
+    install_all_skills_into "$agent_dir/skills"
+  fi
+done
+
+if [ -d "$HOME/.pi/agent" ]; then
+  install_all_skills_into "$HOME/.pi/agent/skills"
 fi
 
 # 6. Check PATH

@@ -25,6 +25,9 @@
           <button class="view-tab active" id="tabMessages" data-view="messages">
             <span>💬</span> Messages
           </button>
+          <button class="view-tab" id="tabChannel" data-view="channel">
+            <span>📡</span> Channel
+          </button>
           <button class="view-tab" id="tabSystem" data-view="system">
             <span>📊</span> System Metrics
           </button>
@@ -325,6 +328,47 @@
                 </div>
               </div>
             </div>
+          </div>
+        </div>
+
+        <!-- VIEW 3: AGENT CHANNEL -->
+        <div id="channelView" class="view-panel channel-view" style="display: none;">
+          <div class="channel-layout">
+            <aside class="channel-roster" id="channelRoster">
+              <div class="channel-roster-header">
+                <span>Agents</span>
+                <span class="section-badge" id="channelAgentCount">0</span>
+              </div>
+              <div class="channel-status-pill" id="channelStatusPill">No channel</div>
+              <div class="channel-agent-list" id="channelAgentList">
+                <div class="channel-empty-roster">No agents registered</div>
+              </div>
+            </aside>
+            <section class="channel-chat">
+              <div class="channel-chat-header">
+                <div>
+                  <strong>Agent Channel</strong>
+                  <span class="channel-chat-sub" id="channelChatSub">Shared room + DMs (all relayed to Telegram)</span>
+                </div>
+                <button id="channelRefreshBtn" class="btn-sm" title="Refresh channel">🔄</button>
+              </div>
+              <div class="channel-messages" id="channelMessages">
+                <div class="channel-empty" id="channelEmpty">
+                  <div class="empty-title">No channel yet</div>
+                  <div class="empty-desc">Create with <code>agent-notify channel create</code></div>
+                </div>
+              </div>
+              <form class="channel-compose" id="channelComposeForm">
+                <input
+                  type="text"
+                  id="channelComposeInput"
+                  placeholder="Message the channel as Human…"
+                  autocomplete="off"
+                  maxlength="4000"
+                />
+                <button type="submit" class="btn-sm" id="channelComposeBtn">Send</button>
+              </form>
+            </section>
           </div>
         </div>
       </main>
