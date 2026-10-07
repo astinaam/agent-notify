@@ -613,7 +613,6 @@ class ChannelStore extends EventEmitter {
       clearAfter: false,
       label,
     });
-    loaded.state.agents = {};
     loaded.state.meta.updatedAt = nowIso();
     this.persist(loaded.code, loaded.state, loaded.messages);
     this.emit('channel_changed');

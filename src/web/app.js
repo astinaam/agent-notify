@@ -56,6 +56,7 @@ const dom = {
   channelMessages: document.getElementById('channelMessages'),
   channelEmpty: document.getElementById('channelEmpty'),
   channelChatTitle: document.getElementById('channelChatTitle'),
+  channelCodeCopy: document.getElementById('channelCodeCopy'),
   channelChatSub: document.getElementById('channelChatSub'),
   channelRefreshBtn: document.getElementById('channelRefreshBtn'),
   channelMoreMenu: document.getElementById('channelMoreMenu'),
@@ -1191,10 +1192,19 @@ function renderChannel() {
     btn.disabled = !status.exists;
   });
   if (dom.channelRosterToggleBtn) {
-    dom.channelRosterToggleBtn.textContent = `Agents (${agents.length})`;
+    const isMobile = window.matchMedia('(max-width: 768px)').matches;
+    const isCollapsed = dom.channelRoster?.classList.contains('roster-collapsed');
+    dom.channelRosterToggleBtn.textContent = isMobile
+      ? `Agents (${agents.length})`
+      : `${isCollapsed ? 'Show' : 'Hide'} Agents (${agents.length})`;
   }
   if (dom.channelChatTitle) {
     dom.channelChatTitle.textContent = `#${code}`;
+  }
+  if (dom.channelCodeCopy) {
+    dom.channelCodeCopy.setAttribute('data-code', code);
+    dom.channelCodeCopy.title = `Copy channel code: ${code}`;
+    dom.channelCodeCopy.setAttribute('aria-label', `Copy channel code: ${code}`);
   }
 
   if (dom.channelAgentCount) dom.channelAgentCount.textContent = String(agents.length);
@@ -1208,9 +1218,11 @@ function renderChannel() {
     }
   }
   if (dom.channelChatSub) {
-    dom.channelChatSub.textContent = status.exists
+    const subText = status.exists
       ? `${status.purpose || ''} · you post as ${humanLabel}`
       : 'Select or create a channel';
+    dom.channelChatSub.textContent = subText;
+    dom.channelChatSub.title = subText;
   }
 
   if (dom.channelAgentList) {
@@ -1524,6 +1536,24 @@ function initEventListeners() {
     if (!dom.channelMoreMenu?.contains(e.target)) closeChannelMenu();
   });
 
+  if (dom.channelCodeCopy) {
+    dom.channelCodeCopy.addEventListener('click', () => {
+      const code = dom.channelCodeCopy.getAttribute('data-code') || '';
+      if (!code) return;
+      copyToClipboard(code, `Copied channel code ${code}`);
+      const hint = dom.channelCodeCopy.querySelector('.channel-code-copy-hint');
+      if (hint) {
+        dom.channelCodeCopy.classList.add('copied');
+        const prev = hint.textContent;
+        hint.textContent = '✓ copied';
+        setTimeout(() => {
+          dom.channelCodeCopy.classList.remove('copied');
+          hint.textContent = prev;
+        }, 1500);
+      }
+    });
+  }
+
   if (dom.channelMoreBtn && dom.channelMoreDropdown) {
     dom.channelMoreBtn.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -1545,6 +1575,9 @@ function initEventListeners() {
           else openChannelRosterDrawer();
         } else {
           dom.channelRoster?.classList.toggle('roster-collapsed');
+          const isCollapsed = dom.channelRoster?.classList.contains('roster-collapsed');
+          const count = state.channel.agents.length;
+          dom.channelRosterToggleBtn.textContent = `${isCollapsed ? 'Show' : 'Hide'} Agents (${count})`;
         }
         return;
       }

@@ -1476,9 +1476,54 @@ body.drawer-open .mobile-overlay {
   min-width: 0;
 }
 
-.channel-title-block strong {
-  display: block;
+.channel-code-copy {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  padding: 0;
+  cursor: pointer;
   font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 1rem;
+  font-weight: 700;
+  border-radius: var(--radius-sm, 4px);
+}
+
+#channelChatTitle {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.channel-code-copy:hover .channel-code-copy-hint,
+.channel-code-copy:focus-visible .channel-code-copy-hint {
+  opacity: 1;
+}
+
+.channel-code-copy:focus-visible {
+  outline: 2px solid var(--accent, #6366f1);
+  outline-offset: 2px;
+}
+
+.channel-code-copy-hint {
+  font-size: 0.65rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  opacity: 0.7;
+  flex-shrink: 0;
+  transition: color 0.15s ease, opacity 0.15s ease;
+}
+
+.channel-code-copy.copied .channel-code-copy-hint {
+  color: var(--success, #22c55e);
+  opacity: 1;
 }
 
 .channel-more-menu {
@@ -2042,6 +2087,9 @@ body.drawer-open .mobile-overlay {
   font-size: 0.75rem;
   color: var(--text-muted);
   margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .channel-messages {
